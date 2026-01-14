@@ -1,0 +1,455 @@
+#!/bin/bash
+# speed-monitor - Internet speed monitoring CLI
+# https://github.com/kishore/speed-monitor
+
+set -e
+
+VERSION="1.0.0"
+CONFIG_DIR="$HOME/.config/speed-monitor"
+CONFIG_FILE="$CONFIG_DIR/config"
+DATA_DIR="$HOME/.local/share/speed-monitor"
+LOG_FILE="$DATA_DIR/speed.log"
+CSV_FILE="$DATA_DIR/speed_log.csv"
+PLIST_NAME="com.speed-monitor.plist"
+PLIST_PATH="$HOME/Library/LaunchAgents/$PLIST_NAME"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+print_header() {
+    echo -e "${BLUE}"
+    echo "╔═══════════════════════════════════════╗"
+    echo "║     Internet Speed Monitor v$VERSION     ║"
+    echo "╚═══════════════════════════════════════╝"
+    echo -e "${NC}"
+}
+
+usage() {
+    print_header
+    echo "Usage: speed-monitor <command> [options]"
+    echo ""
+    echo "Commands:"
+    echo "  setup       Configure speed-monitor (run this first)"
+    echo "  run         Run a speed test now"
+    echo "  start       Start automatic monitoring (launchd)"
+    echo "  stop        Stop automatic monitoring"
+    echo "  status      Show current status and recent results"
+    echo "  logs        View recent logs"
+    echo "  dashboard   Open local dashboard in browser"
+    echo "  uninstall   Remove speed-monitor configuration"
+    echo ""
+    echo "Options:"
+    echo "  -h, --help     Show this help message"
+    echo "  -v, --version  Show version"
+    echo ""
+}
+
+check_dependencies() {
+    local missing=()
+
+    if ! command -v speedtest-cli &> /dev/null; then
+        missing+=("speedtest-cli")
+    fi
+
+    if ! command -v curl &> /dev/null; then
+        missing+=("curl")
+    fi
+
+    if [ ${#missing[@]} -gt 0 ]; then
+        echo -e "${RED}Missing dependencies: ${missing[*]}${NC}"
+        echo "Install with: brew install ${missing[*]}"
+        exit 1
+    fi
+}
+
+load_config() {
+    if [ -f "$CONFIG_FILE" ]; then
+        source "$CONFIG_FILE"
+    fi
+}
+
+save_config() {
+    mkdir -p "$CONFIG_DIR"
+    cat > "$CONFIG_FILE" << EOF
+# Speed Monitor Configuration
+USER_NAME="$USER_NAME"
+SERVER_URL="$SERVER_URL"
+API_KEY="$API_KEY"
+INTERVAL="${INTERVAL:-600}"
+EOF
+    chmod 600 "$CONFIG_FILE"
+}
+
+generate_api_key() {
+    openssl rand -hex 16
+}
+
+cmd_setup() {
+    print_header
+    echo -e "${GREEN}Setting up speed-monitor...${NC}"
+    echo ""
+
+    check_dependencies
+
+    # Create directories
+    mkdir -p "$CONFIG_DIR" "$DATA_DIR"
+
+    # Get user name
+    echo -n "Enter your name/employee ID: "
+    read -r USER_NAME
+    if [ -z "$USER_NAME" ]; then
+        echo -e "${RED}Name is required${NC}"
+        exit 1
+    fi
+
+    # Get server URL
+    echo -n "Enter central server URL (or press Enter for local-only): "
+    read -r SERVER_URL
+
+    # Generate API key if server is configured
+    if [ -n "$SERVER_URL" ]; then
+        API_KEY=$(generate_api_key)
+        echo -e "${YELLOW}Your API key: $API_KEY${NC}"
+        echo "Save this key - you'll need it if you reinstall."
+    fi
+
+    # Get interval
+    echo -n "Test interval in minutes [10]: "
+    read -r interval_mins
+    INTERVAL=$(( ${interval_mins:-10} * 60 ))
+
+    # Save config
+    save_config
+
+    # Initialize CSV
+    if [ ! -f "$CSV_FILE" ]; then
+        echo "timestamp,date,time,user,hostname,download_mbps,upload_mbps,ping_ms,network_ssid,external_ip,status" > "$CSV_FILE"
+    fi
+
+    echo ""
+    echo -e "${GREEN}Setup complete!${NC}"
+    echo ""
+    echo "Next steps:"
+    echo "  1. Run 'speed-monitor run' to test"
+    echo "  2. Run 'speed-monitor start' to enable automatic monitoring"
+    echo ""
+}
+
+cmd_run() {
+    load_config
+
+    if [ -z "$USER_NAME" ]; then
+        echo -e "${RED}Not configured. Run 'speed-monitor setup' first.${NC}"
+        exit 1
+    fi
+
+    echo -e "${BLUE}Running speed test...${NC}"
+
+    # Get network info
+    SSID=$(/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -I 2>/dev/null | awk '/ SSID/ {print substr($0, index($0, $2))}' || echo "Unknown/Ethernet")
+    HOSTNAME=$(hostname -s)
+    TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+    DATE=$(date '+%Y-%m-%d')
+    TIME=$(date '+%H:%M:%S')
+
+    # Run speed test
+    if RESULT=$(speedtest-cli --simple 2>&1); then
+        PING=$(echo "$RESULT" | grep 'Ping' | awk '{print $2}')
+        DOWNLOAD=$(echo "$RESULT" | grep 'Download' | awk '{print $2}')
+        UPLOAD=$(echo "$RESULT" | grep 'Upload' | awk '{print $2}')
+        STATUS="success"
+
+        echo -e "${GREEN}Download: ${DOWNLOAD} Mbps${NC}"
+        echo -e "${GREEN}Upload:   ${UPLOAD} Mbps${NC}"
+        echo -e "${GREEN}Ping:     ${PING} ms${NC}"
+    else
+        PING="0"
+        DOWNLOAD="0"
+        UPLOAD="0"
+        STATUS="failed"
+        echo -e "${RED}Speed test failed${NC}"
+    fi
+
+    # Get external IP
+    EXTERNAL_IP=$(curl -s --max-time 5 ifconfig.me || echo "unknown")
+
+    # Log to CSV
+    echo "$TIMESTAMP,$DATE,$TIME,$USER_NAME,$HOSTNAME,$DOWNLOAD,$UPLOAD,$PING,$SSID,$EXTERNAL_IP,$STATUS" >> "$CSV_FILE"
+
+    # Send to server if configured
+    if [ -n "$SERVER_URL" ] && [ "$STATUS" = "success" ]; then
+        send_to_server "$TIMESTAMP" "$DOWNLOAD" "$UPLOAD" "$PING" "$SSID" "$EXTERNAL_IP"
+    fi
+
+    echo "$TIMESTAMP - $STATUS" >> "$LOG_FILE"
+}
+
+send_to_server() {
+    local timestamp="$1"
+    local download="$2"
+    local upload="$3"
+    local ping="$4"
+    local ssid="$5"
+    local ip="$6"
+
+    local payload=$(cat <<EOF
+{
+    "user_id": "$USER_NAME",
+    "hostname": "$(hostname -s)",
+    "timestamp": "$timestamp",
+    "download_mbps": $download,
+    "upload_mbps": $upload,
+    "ping_ms": $ping,
+    "network_ssid": "$ssid",
+    "external_ip": "$ip",
+    "status": "success"
+}
+EOF
+)
+
+    curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -H "X-API-Key: $API_KEY" \
+        -d "$payload" \
+        "$SERVER_URL/api/results" > /dev/null 2>&1 && \
+        echo -e "${GREEN}Sent to server${NC}" || \
+        echo -e "${YELLOW}Failed to send to server (data saved locally)${NC}"
+}
+
+cmd_start() {
+    load_config
+
+    if [ -z "$USER_NAME" ]; then
+        echo -e "${RED}Not configured. Run 'speed-monitor setup' first.${NC}"
+        exit 1
+    fi
+
+    # Get the path to this script
+    SCRIPT_PATH=$(which speed-monitor 2>/dev/null || echo "/usr/local/bin/speed-monitor")
+
+    # Create launchd plist
+    cat > "$PLIST_PATH" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>$PLIST_NAME</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>$SCRIPT_PATH</string>
+        <string>run</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>${INTERVAL:-600}</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>$DATA_DIR/launchd_stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>$DATA_DIR/launchd_stderr.log</string>
+</dict>
+</plist>
+EOF
+
+    # Load the job
+    launchctl unload "$PLIST_PATH" 2>/dev/null || true
+    launchctl load "$PLIST_PATH"
+
+    echo -e "${GREEN}Automatic monitoring started${NC}"
+    echo "Tests will run every $((INTERVAL / 60)) minutes"
+}
+
+cmd_stop() {
+    if [ -f "$PLIST_PATH" ]; then
+        launchctl unload "$PLIST_PATH" 2>/dev/null || true
+        rm -f "$PLIST_PATH"
+        echo -e "${GREEN}Automatic monitoring stopped${NC}"
+    else
+        echo "Monitoring was not running"
+    fi
+}
+
+cmd_status() {
+    print_header
+    load_config
+
+    echo -e "${BLUE}Configuration:${NC}"
+    echo "  User:     ${USER_NAME:-Not configured}"
+    echo "  Server:   ${SERVER_URL:-Local only}"
+    echo "  Interval: $((${INTERVAL:-600} / 60)) minutes"
+    echo ""
+
+    # Check launchd status
+    if launchctl list | grep -q "$PLIST_NAME"; then
+        echo -e "  Status:   ${GREEN}Running${NC}"
+    else
+        echo -e "  Status:   ${YELLOW}Stopped${NC}"
+    fi
+    echo ""
+
+    # Show recent results
+    if [ -f "$CSV_FILE" ]; then
+        echo -e "${BLUE}Recent Results:${NC}"
+        tail -5 "$CSV_FILE" | while IFS=',' read -r ts date time user host down up ping ssid ip status; do
+            if [ "$ts" != "timestamp" ]; then
+                echo "  $time - Down: ${down}Mbps, Up: ${up}Mbps, Ping: ${ping}ms"
+            fi
+        done
+    fi
+}
+
+cmd_logs() {
+    if [ -f "$LOG_FILE" ]; then
+        tail -20 "$LOG_FILE"
+    else
+        echo "No logs yet"
+    fi
+}
+
+cmd_dashboard() {
+    # Start local dashboard server
+    local dashboard_port=8765
+    local dashboard_file="$DATA_DIR/dashboard.html"
+
+    # Create dashboard HTML if it doesn't exist
+    create_local_dashboard
+
+    echo "Starting dashboard at http://localhost:$dashboard_port"
+    cd "$DATA_DIR" && python3 -m http.server $dashboard_port &
+    sleep 1
+    open "http://localhost:$dashboard_port/dashboard.html"
+}
+
+create_local_dashboard() {
+    cat > "$DATA_DIR/dashboard.html" << 'DASHBOARD_EOF'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speed Monitor Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1a1a2e; color: #eee; padding: 20px; }
+        .header { text-align: center; margin-bottom: 30px; }
+        h1 { font-size: 2rem; color: #00d4ff; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .stat-card { background: #16213e; border-radius: 12px; padding: 20px; text-align: center; }
+        .stat-value { font-size: 2.5rem; font-weight: bold; color: #00d4ff; }
+        .stat-label { color: #888; margin-top: 5px; }
+        .chart-container { background: #16213e; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+        canvas { max-height: 300px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Internet Speed Monitor</h1>
+        <p id="lastUpdate">Loading...</p>
+    </div>
+    <div class="stats">
+        <div class="stat-card">
+            <div class="stat-value" id="avgDown">--</div>
+            <div class="stat-label">Avg Download (Mbps)</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="avgUp">--</div>
+            <div class="stat-label">Avg Upload (Mbps)</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="avgPing">--</div>
+            <div class="stat-label">Avg Ping (ms)</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="testCount">--</div>
+            <div class="stat-label">Total Tests</div>
+        </div>
+    </div>
+    <div class="chart-container">
+        <canvas id="speedChart"></canvas>
+    </div>
+    <script>
+        async function loadData() {
+            const response = await fetch('speed_log.csv');
+            const text = await response.text();
+            const lines = text.trim().split('\n');
+            const headers = lines[0].split(',');
+            const data = lines.slice(1).map(line => {
+                const values = line.split(',');
+                return headers.reduce((obj, header, i) => {
+                    obj[header.trim()] = values[i]?.trim();
+                    return obj;
+                }, {});
+            }).filter(d => d.status === 'success');
+
+            if (data.length === 0) return;
+
+            const recent = data.slice(-50);
+            const avgDown = (data.reduce((s, d) => s + parseFloat(d.download_mbps || 0), 0) / data.length).toFixed(1);
+            const avgUp = (data.reduce((s, d) => s + parseFloat(d.upload_mbps || 0), 0) / data.length).toFixed(1);
+            const avgPing = (data.reduce((s, d) => s + parseFloat(d.ping_ms || 0), 0) / data.length).toFixed(1);
+
+            document.getElementById('avgDown').textContent = avgDown;
+            document.getElementById('avgUp').textContent = avgUp;
+            document.getElementById('avgPing').textContent = avgPing;
+            document.getElementById('testCount').textContent = data.length;
+            document.getElementById('lastUpdate').textContent = `Last test: ${data[data.length-1].time}`;
+
+            new Chart(document.getElementById('speedChart'), {
+                type: 'line',
+                data: {
+                    labels: recent.map(d => d.time),
+                    datasets: [
+                        { label: 'Download', data: recent.map(d => parseFloat(d.download_mbps)), borderColor: '#00d4ff', tension: 0.3 },
+                        { label: 'Upload', data: recent.map(d => parseFloat(d.upload_mbps)), borderColor: '#00ff88', tension: 0.3 }
+                    ]
+                },
+                options: { responsive: true, plugins: { legend: { labels: { color: '#eee' } } }, scales: { x: { ticks: { color: '#888' } }, y: { ticks: { color: '#888' } } } }
+            });
+        }
+        loadData();
+    </script>
+</body>
+</html>
+DASHBOARD_EOF
+}
+
+cmd_uninstall() {
+    echo -e "${YELLOW}This will remove speed-monitor configuration.${NC}"
+    echo -n "Are you sure? (y/N): "
+    read -r confirm
+
+    if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
+        cmd_stop
+        rm -rf "$CONFIG_DIR"
+        echo -e "${GREEN}Configuration removed.${NC}"
+        echo "Data files preserved at: $DATA_DIR"
+        echo "To fully remove, run: rm -rf $DATA_DIR"
+    else
+        echo "Cancelled"
+    fi
+}
+
+# Main entry point
+case "${1:-}" in
+    setup)      cmd_setup ;;
+    run)        cmd_run ;;
+    start)      cmd_start ;;
+    stop)       cmd_stop ;;
+    status)     cmd_status ;;
+    logs)       cmd_logs ;;
+    dashboard)  cmd_dashboard ;;
+    uninstall)  cmd_uninstall ;;
+    -v|--version) echo "speed-monitor v$VERSION" ;;
+    -h|--help|"") usage ;;
+    *)
+        echo -e "${RED}Unknown command: $1${NC}"
+        usage
+        exit 1
+        ;;
+esac

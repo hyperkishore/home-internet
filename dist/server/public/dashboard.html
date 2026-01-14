@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speed Monitor - Organization Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #eee;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { max-width: 1400px; margin: 0 auto; }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+        }
+        h1 {
+            font-size: 2.5rem;
+            background: linear-gradient(90deg, #00d4ff, #00ff88);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+        }
+        .subtitle { color: #888; font-size: 1.1rem; }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: rgba(22, 33, 62, 0.8);
+            border-radius: 16px;
+            padding: 24px;
+            text-align: center;
+            border: 1px solid rgba(0, 212, 255, 0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 30px rgba(0, 212, 255, 0.2);
+        }
+        .stat-value {
+            font-size: 2.8rem;
+            font-weight: 700;
+            background: linear-gradient(90deg, #00d4ff, #00ff88);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .stat-label { color: #888; margin-top: 8px; font-size: 0.95rem; }
+
+        .section {
+            background: rgba(22, 33, 62, 0.8);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 24px;
+            border: 1px solid rgba(0, 212, 255, 0.1);
+        }
+        .section-title {
+            font-size: 1.3rem;
+            margin-bottom: 20px;
+            color: #00d4ff;
+        }
+
+        .chart-container { position: relative; height: 300px; }
+
+        .users-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 16px;
+        }
+        .user-card {
+            background: rgba(26, 26, 46, 0.6);
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .user-info h3 { color: #fff; margin-bottom: 4px; }
+        .user-info p { color: #666; font-size: 0.85rem; }
+        .user-stats { text-align: right; }
+        .user-stats .speed { font-size: 1.4rem; color: #00d4ff; font-weight: 600; }
+        .user-stats .label { color: #666; font-size: 0.8rem; }
+
+        .status-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-online { background: #00ff88; }
+        .status-offline { background: #ff4444; }
+
+        .refresh-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: linear-gradient(90deg, #00d4ff, #00ff88);
+            border: none;
+            border-radius: 50%;
+            width: 56px;
+            height: 56px;
+            cursor: pointer;
+            font-size: 1.5rem;
+            box-shadow: 0 4px 20px rgba(0, 212, 255, 0.4);
+            transition: transform 0.2s;
+        }
+        .refresh-btn:hover { transform: scale(1.1); }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        @media (max-width: 768px) {
+            h1 { font-size: 1.8rem; }
+            .stat-value { font-size: 2rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>Organization Speed Monitor</h1>
+            <p class="subtitle">Real-time internet speed tracking across your team</p>
+        </header>
+
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card">
+                <div class="stat-value" id="totalUsers">--</div>
+                <div class="stat-label">Active Users</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="avgDownload">--</div>
+                <div class="stat-label">Avg Download (Mbps)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="avgUpload">--</div>
+                <div class="stat-label">Avg Upload (Mbps)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="avgPing">--</div>
+                <div class="stat-label">Avg Ping (ms)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="totalTests">--</div>
+                <div class="stat-label">Total Tests</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2 class="section-title">Speed Trends (Last 24 Hours)</h2>
+            <div class="chart-container">
+                <canvas id="trendChart"></canvas>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2 class="section-title">Team Members</h2>
+            <div class="users-grid" id="usersGrid">
+                <div class="loading">Loading user data...</div>
+            </div>
+        </div>
+    </div>
+
+    <button class="refresh-btn" onclick="loadData()" title="Refresh">↻</button>
+
+    <script>
+        let trendChart = null;
+
+        async function loadData() {
+            try {
+                const response = await fetch('/api/stats');
+                const data = await response.json();
+
+                // Update overall stats
+                document.getElementById('totalUsers').textContent = data.overall.total_users || 0;
+                document.getElementById('avgDownload').textContent = data.overall.avg_download || '--';
+                document.getElementById('avgUpload').textContent = data.overall.avg_upload || '--';
+                document.getElementById('avgPing').textContent = data.overall.avg_ping || '--';
+                document.getElementById('totalTests').textContent = data.overall.total_tests || 0;
+
+                // Update trend chart
+                updateTrendChart(data.hourly);
+
+                // Update users grid
+                updateUsersGrid(data.perUser);
+
+            } catch (err) {
+                console.error('Failed to load data:', err);
+            }
+        }
+
+        function updateTrendChart(hourlyData) {
+            const ctx = document.getElementById('trendChart').getContext('2d');
+
+            if (trendChart) {
+                trendChart.destroy();
+            }
+
+            trendChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: hourlyData.map(d => d.hour.split(' ')[1] || d.hour),
+                    datasets: [
+                        {
+                            label: 'Download (Mbps)',
+                            data: hourlyData.map(d => d.avg_download),
+                            borderColor: '#00d4ff',
+                            backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                            fill: true,
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Upload (Mbps)',
+                            data: hourlyData.map(d => d.avg_upload),
+                            borderColor: '#00ff88',
+                            backgroundColor: 'rgba(0, 255, 136, 0.1)',
+                            fill: true,
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: { color: '#888' }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: 'rgba(255,255,255,0.05)' },
+                            ticks: { color: '#666' }
+                        },
+                        y: {
+                            grid: { color: 'rgba(255,255,255,0.05)' },
+                            ticks: { color: '#666' }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateUsersGrid(users) {
+            const grid = document.getElementById('usersGrid');
+
+            if (!users || users.length === 0) {
+                grid.innerHTML = '<div class="loading">No users registered yet</div>';
+                return;
+            }
+
+            grid.innerHTML = users.map(user => {
+                const lastTest = new Date(user.last_test);
+                const now = new Date();
+                const hoursSinceTest = (now - lastTest) / (1000 * 60 * 60);
+                const isOnline = hoursSinceTest < 1;
+
+                return `
+                    <div class="user-card">
+                        <div class="user-info">
+                            <h3>
+                                <span class="status-dot ${isOnline ? 'status-online' : 'status-offline'}"></span>
+                                ${user.user_id}
+                            </h3>
+                            <p>${user.hostname || 'Unknown device'} • ${user.test_count} tests</p>
+                        </div>
+                        <div class="user-stats">
+                            <div class="speed">↓${user.avg_download}</div>
+                            <div class="label">Mbps avg</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Initial load
+        loadData();
+
+        // Auto-refresh every 30 seconds
+        setInterval(loadData, 30000);
+    </script>
+</body>
+</html>

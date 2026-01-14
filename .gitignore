@@ -1,0 +1,22 @@
+# Credentials and secrets
+credentials.md
+
+# Logs
+*.log
+launchd_stdout.log
+launchd_stderr.log
+watchdog_stdout.log
+watchdog_stderr.log
+watchdog.log
+
+# Data files (user-specific)
+speed_log.csv
+
+# Claude config
+.claude/
+
+# macOS
+.DS_Store
+
+# Node modules (if any)
+node_modules/

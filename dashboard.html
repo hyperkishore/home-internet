@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Internet Speed Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            color: #38bdf8;
+        }
+        .subtitle {
+            text-align: center;
+            color: #64748b;
+            margin-bottom: 30px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: #1e293b;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+        .stat-label {
+            color: #94a3b8;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+        .stat-value {
+            font-size: 32px;
+            font-weight: bold;
+        }
+        .stat-value.download { color: #22c55e; }
+        .stat-value.upload { color: #3b82f6; }
+        .stat-value.ping { color: #f59e0b; }
+        .stat-value.tests { color: #a855f7; }
+        .stat-unit {
+            font-size: 14px;
+            color: #64748b;
+        }
+        .chart-container {
+            background: #1e293b;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .chart-title {
+            color: #94a3b8;
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+        .chart-wrapper {
+            position: relative;
+            height: 300px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #1e293b;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #334155;
+        }
+        th {
+            background: #334155;
+            color: #94a3b8;
+            font-weight: 500;
+        }
+        tr:hover {
+            background: #334155;
+        }
+        .status-success {
+            color: #22c55e;
+        }
+        .status-failed {
+            color: #ef4444;
+        }
+        .refresh-btn {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+        .refresh-btn:hover {
+            background: #2563eb;
+        }
+        .last-updated {
+            color: #64748b;
+            font-size: 12px;
+            margin-left: 15px;
+        }
+        .header-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Internet Speed Dashboard</h1>
+        <p class="subtitle">ACT Fibernet - TP-Link Archer C5</p>
+
+        <div class="header-row">
+            <button class="refresh-btn" onclick="loadData()">Refresh Data</button>
+            <span class="last-updated" id="lastUpdated"></span>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Avg Download</div>
+                <div class="stat-value download" id="avgDownload">--</div>
+                <div class="stat-unit">Mbps</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Avg Upload</div>
+                <div class="stat-value upload" id="avgUpload">--</div>
+                <div class="stat-unit">Mbps</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Avg Ping</div>
+                <div class="stat-value ping" id="avgPing">--</div>
+                <div class="stat-unit">ms</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Tests</div>
+                <div class="stat-value tests" id="totalTests">--</div>
+                <div class="stat-unit">runs</div>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <div class="chart-title">Speed Over Time</div>
+            <div class="chart-wrapper">
+                <canvas id="speedChart"></canvas>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <div class="chart-title">Ping Latency</div>
+            <div class="chart-wrapper">
+                <canvas id="pingChart"></canvas>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <div class="chart-title">Recent Tests</div>
+            <table id="dataTable">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Download</th>
+                        <th>Upload</th>
+                        <th>Ping</th>
+                        <th>Network</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let speedChart, pingChart;
+
+        async function loadData() {
+            try {
+                const response = await fetch('speed_log.csv');
+                const text = await response.text();
+                const rows = text.trim().split('\n').slice(1); // Skip header
+
+                const data = rows.map(row => {
+                    const cols = row.split(',');
+                    return {
+                        timestamp: cols[0],
+                        date: cols[1],
+                        time: cols[2],
+                        network: cols[3],
+                        download: parseFloat(cols[4]) || 0,
+                        upload: parseFloat(cols[5]) || 0,
+                        ping: parseFloat(cols[6]) || 0,
+                        status: cols[12]
+                    };
+                }).filter(d => d.status === 'success');
+
+                updateStats(data);
+                updateCharts(data);
+                updateTable(data);
+
+                document.getElementById('lastUpdated').textContent =
+                    'Last updated: ' + new Date().toLocaleTimeString();
+            } catch (err) {
+                console.error('Error loading data:', err);
+            }
+        }
+
+        function updateStats(data) {
+            if (data.length === 0) return;
+
+            const avgDownload = data.reduce((a, b) => a + b.download, 0) / data.length;
+            const avgUpload = data.reduce((a, b) => a + b.upload, 0) / data.length;
+            const avgPing = data.reduce((a, b) => a + b.ping, 0) / data.length;
+
+            document.getElementById('avgDownload').textContent = avgDownload.toFixed(1);
+            document.getElementById('avgUpload').textContent = avgUpload.toFixed(1);
+            document.getElementById('avgPing').textContent = avgPing.toFixed(0);
+            document.getElementById('totalTests').textContent = data.length;
+        }
+
+        function updateCharts(data) {
+            const labels = data.map(d => d.time);
+            const downloads = data.map(d => d.download);
+            const uploads = data.map(d => d.upload);
+            const pings = data.map(d => d.ping);
+
+            // Speed Chart
+            if (speedChart) speedChart.destroy();
+            speedChart = new Chart(document.getElementById('speedChart'), {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Download (Mbps)',
+                            data: downloads,
+                            borderColor: '#22c55e',
+                            backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                            fill: true,
+                            tension: 0.3
+                        },
+                        {
+                            label: 'Upload (Mbps)',
+                            data: uploads,
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            fill: true,
+                            tension: 0.3
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: { color: '#94a3b8' }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#64748b' },
+                            grid: { color: '#334155' }
+                        },
+                        y: {
+                            ticks: { color: '#64748b' },
+                            grid: { color: '#334155' }
+                        }
+                    }
+                }
+            });
+
+            // Ping Chart
+            if (pingChart) pingChart.destroy();
+            pingChart = new Chart(document.getElementById('pingChart'), {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Ping (ms)',
+                        data: pings,
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                        fill: true,
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: { color: '#94a3b8' }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#64748b' },
+                            grid: { color: '#334155' }
+                        },
+                        y: {
+                            ticks: { color: '#64748b' },
+                            grid: { color: '#334155' }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateTable(data) {
+            const tbody = document.querySelector('#dataTable tbody');
+            tbody.innerHTML = data.slice().reverse().slice(0, 20).map(d => `
+                <tr>
+                    <td>${d.timestamp}</td>
+                    <td>${d.download.toFixed(2)} Mbps</td>
+                    <td>${d.upload.toFixed(2)} Mbps</td>
+                    <td>${d.ping.toFixed(1)} ms</td>
+                    <td>${d.network}</td>
+                    <td class="status-${d.status}">${d.status}</td>
+                </tr>
+            `).join('');
+        }
+
+        // Load data on page load
+        loadData();
+
+        // Auto-refresh every 5 minutes
+        setInterval(loadData, 300000);
+    </script>
+</body>
+</html>
