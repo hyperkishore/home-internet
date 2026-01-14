@@ -20,3 +20,5 @@ speed_log.csv
 
 # Node modules (if any)
 node_modules/
+dist/src/wifi_info
+dist/server/*.db

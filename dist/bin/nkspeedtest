@@ -6,7 +6,7 @@ const fs = require('fs');
 const os = require('os');
 const readline = require('readline');
 
-const VERSION = '1.0.5';
+const VERSION = '2.0.0';
 const CONFIG_DIR = path.join(os.homedir(), '.config', 'nkspeedtest');
 const DATA_DIR = path.join(os.homedir(), '.local', 'share', 'nkspeedtest');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
@@ -185,9 +185,10 @@ async function cmdSetup() {
 
   saveConfig(config);
 
-  // Initialize CSV
+  // Initialize CSV with v2.0 schema
+  const csvHeader = 'timestamp_utc,device_id,os_version,app_version,timezone,interface,ssid,bssid,band,channel,width_mhz,rssi_dbm,noise_dbm,snr_db,tx_rate_mbps,local_ip,public_ip,latency_ms,jitter_ms,jitter_p50,jitter_p95,packet_loss_pct,download_mbps,upload_mbps,vpn_status,vpn_name,errors,raw_payload';
   if (!fs.existsSync(CSV_FILE)) {
-    fs.writeFileSync(CSV_FILE, 'timestamp,date,time,user,hostname,download_mbps,upload_mbps,ping_ms,network_ssid,external_ip,status\n');
+    fs.writeFileSync(CSV_FILE, csvHeader + '\n');
   }
 
   // Ask about menu bar widget
@@ -211,50 +212,148 @@ function cmdRun() {
     process.exit(1);
   }
 
-  console.log(colors.blue('Running speed test...'));
+  console.log(colors.blue('Running speed test (v2.0)...'));
 
-  // Get network info
-  let ssid = 'Unknown/Ethernet';
+  // Get device ID (persisted)
+  const deviceIdFile = path.join(CONFIG_DIR, 'device_id');
+  let deviceId;
+  if (fs.existsSync(deviceIdFile)) {
+    deviceId = fs.readFileSync(deviceIdFile, 'utf8').trim();
+  } else {
+    try {
+      const hwUuid = execSync("ioreg -rd1 -c IOPlatformExpertDevice | awk '/IOPlatformUUID/ { print $3 }' | tr -d '\"'", { encoding: 'utf8' }).trim();
+      deviceId = require('crypto').createHash('sha256').update(hwUuid).digest('hex').substring(0, 16);
+      fs.writeFileSync(deviceIdFile, deviceId);
+    } catch {
+      deviceId = require('crypto').randomBytes(8).toString('hex');
+      fs.writeFileSync(deviceIdFile, deviceId);
+    }
+  }
+
+  const timestampUtc = new Date().toISOString().replace('.000', '').replace(/\.\d{3}/, '');
+  const osVersion = (() => { try { return execSync('sw_vers -productVersion', { encoding: 'utf8' }).trim(); } catch { return 'unknown'; } })();
+  const timezone = new Date().toTimeString().match(/([+-]\d{4})/)?.[1] || '+0000';
+
+  // Get WiFi details
+  console.log(colors.blue('Collecting WiFi details...'));
+  let wifiData = { interface: 'en0', ssid: 'Unknown/Ethernet', bssid: 'none', band: 'none', channel: 0, widthMhz: 0, rssiDbm: 0, noiseDbm: 0, snrDb: 0, txRateMbps: 0 };
+  const wifiHelperPath = path.join(path.dirname(process.argv[1]), 'wifi_info');
+  const altWifiHelper = path.join(os.homedir(), '.local', 'bin', 'wifi_info');
+
   try {
-    ssid = execSync('/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -I 2>/dev/null | awk \'/ SSID/ {print substr($0, index($0, $2))}\'', { encoding: 'utf8' }).trim() || 'Unknown/Ethernet';
+    let wifiOutput;
+    if (fs.existsSync(wifiHelperPath)) {
+      wifiOutput = execSync(wifiHelperPath, { encoding: 'utf8' });
+    } else if (fs.existsSync(altWifiHelper)) {
+      wifiOutput = execSync(altWifiHelper, { encoding: 'utf8' });
+    }
+    if (wifiOutput) {
+      wifiOutput.split('\n').forEach(line => {
+        const [key, val] = line.split('=');
+        if (key === 'INTERFACE') wifiData.interface = val;
+        if (key === 'SSID') wifiData.ssid = val;
+        if (key === 'BSSID') wifiData.bssid = val;
+        if (key === 'BAND') wifiData.band = val;
+        if (key === 'CHANNEL') wifiData.channel = parseInt(val) || 0;
+        if (key === 'WIDTH_MHZ') wifiData.widthMhz = parseInt(val) || 0;
+        if (key === 'RSSI_DBM') wifiData.rssiDbm = parseInt(val) || 0;
+        if (key === 'NOISE_DBM') wifiData.noiseDbm = parseInt(val) || 0;
+        if (key === 'SNR_DB') wifiData.snrDb = parseInt(val) || 0;
+        if (key === 'TX_RATE_MBPS') wifiData.txRateMbps = parseInt(val) || 0;
+      });
+    }
   } catch {}
 
-  const hostname = os.hostname().split('.')[0];
-  const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
-  const date = timestamp.split(' ')[0];
-  const time = timestamp.split(' ')[1];
+  // VPN Detection
+  console.log(colors.blue('Detecting VPN status...'));
+  let vpnStatus = 'disconnected', vpnName = 'none';
+  try {
+    const processes = execSync('ps aux', { encoding: 'utf8' });
+    if (/Zscaler|ZscalerTunnel/i.test(processes)) { vpnStatus = 'connected'; vpnName = 'Zscaler'; }
+    else if (/vpnagentd/i.test(processes)) { vpnStatus = 'connected'; vpnName = 'Cisco AnyConnect'; }
+    else if (/PanGPS|GlobalProtect/i.test(processes)) { vpnStatus = 'connected'; vpnName = 'GlobalProtect'; }
+    else if (/FortiClient/i.test(processes)) { vpnStatus = 'connected'; vpnName = 'FortiClient'; }
+    else if (/openvpn/i.test(processes)) { vpnStatus = 'connected'; vpnName = 'OpenVPN'; }
+    else if (/wireguard-go/i.test(processes)) { vpnStatus = 'connected'; vpnName = 'WireGuard'; }
+    else {
+      const ifconfig = execSync('ifconfig 2>/dev/null', { encoding: 'utf8' });
+      if (/^utun.*inet /m.test(ifconfig)) { vpnStatus = 'connected'; vpnName = 'Unknown VPN'; }
+    }
+  } catch {}
 
+  // Jitter test (15 pings)
+  console.log(colors.blue('Running jitter test...'));
+  let jitterMs = 0, jitterP50 = 0, jitterP95 = 0, packetLossPct = 0;
+  try {
+    const pingOutput = execSync('ping -c 15 8.8.8.8', { encoding: 'utf8', timeout: 30000 });
+    const rttValues = pingOutput.match(/time=(\d+\.?\d*)/g)?.map(m => parseFloat(m.replace('time=', ''))) || [];
+    const lossMatch = pingOutput.match(/([\d.]+)% packet loss/);
+    packetLossPct = lossMatch ? parseFloat(lossMatch[1]) : 0;
+    if (rttValues.length > 1) {
+      let sumDiff = 0;
+      for (let i = 1; i < rttValues.length; i++) sumDiff += Math.abs(rttValues[i] - rttValues[i-1]);
+      jitterMs = parseFloat((sumDiff / (rttValues.length - 1)).toFixed(2));
+      const sorted = [...rttValues].sort((a, b) => a - b);
+      jitterP50 = sorted[Math.floor(sorted.length * 0.5)];
+      jitterP95 = sorted[Math.floor(sorted.length * 0.95)] || sorted[sorted.length - 1];
+    }
+  } catch {}
+
+  // Network info
+  const localIp = (() => { try { return execSync('ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null', { encoding: 'utf8' }).trim(); } catch { return 'unknown'; } })();
+  let publicIp = 'unknown';
+  try { publicIp = execSync('curl -s --max-time 5 ifconfig.me', { encoding: 'utf8' }).trim(); } catch {}
+
+  // Speed test
+  console.log(colors.blue('Running speed test...'));
+  let latencyMs = 0, downloadMbps = 0, uploadMbps = 0, status = 'failed', errors = '';
   try {
     const result = execSync('speedtest-cli --simple', { encoding: 'utf8', timeout: 120000 });
-    const ping = result.match(/Ping: ([\d.]+)/)?.[1] || '0';
-    const download = result.match(/Download: ([\d.]+)/)?.[1] || '0';
-    const upload = result.match(/Upload: ([\d.]+)/)?.[1] || '0';
-
-    console.log(colors.green(`Download: ${download} Mbps`));
-    console.log(colors.green(`Upload:   ${upload} Mbps`));
-    console.log(colors.green(`Ping:     ${ping} ms`));
-
-    // Get external IP
-    let externalIp = 'unknown';
-    try {
-      externalIp = execSync('curl -s --max-time 5 ifconfig.me', { encoding: 'utf8' }).trim();
-    } catch {}
-
-    // Log to CSV
-    ensureDirs();
-    fs.appendFileSync(CSV_FILE, `${timestamp},${date},${time},${config.userName},${hostname},${download},${upload},${ping},${ssid},${externalIp},success\n`);
-
-    // Send to server
-    if (config.serverUrl) {
-      sendToServer(config, { timestamp, download, upload, ping, ssid, externalIp, hostname });
-    }
-
-    fs.appendFileSync(LOG_FILE, `${timestamp} - success\n`);
+    latencyMs = parseFloat(result.match(/Ping: ([\d.]+)/)?.[1] || '0');
+    downloadMbps = parseFloat(result.match(/Download: ([\d.]+)/)?.[1] || '0');
+    uploadMbps = parseFloat(result.match(/Upload: ([\d.]+)/)?.[1] || '0');
+    status = 'success';
+    console.log(colors.green(`Download: ${downloadMbps} Mbps`));
+    console.log(colors.green(`Upload:   ${uploadMbps} Mbps`));
+    console.log(colors.green(`Latency:  ${latencyMs} ms`));
+    console.log(colors.cyan(`VPN:      ${vpnName} (${vpnStatus})`));
+    console.log(colors.cyan(`Jitter:   ${jitterMs} ms (P50: ${jitterP50}, P95: ${jitterP95})`));
   } catch (err) {
     console.log(colors.red('Speed test failed'));
-    fs.appendFileSync(CSV_FILE, `${timestamp},${date},${time},${config.userName},${hostname},0,0,0,${ssid},unknown,failed\n`);
-    fs.appendFileSync(LOG_FILE, `${timestamp} - failed\n`);
+    errors = 'speedtest_failed';
   }
+
+  // Build JSON payload
+  const payload = {
+    timestamp_utc: timestampUtc, device_id: deviceId, os_version: osVersion, app_version: VERSION,
+    timezone, interface: wifiData.interface, ssid: wifiData.ssid, bssid: wifiData.bssid,
+    band: wifiData.band, channel: wifiData.channel, width_mhz: wifiData.widthMhz,
+    rssi_dbm: wifiData.rssiDbm, noise_dbm: wifiData.noiseDbm, snr_db: wifiData.snrDb,
+    tx_rate_mbps: wifiData.txRateMbps, local_ip: localIp, public_ip: publicIp,
+    latency_ms: latencyMs, jitter_ms: jitterMs, jitter_p50: jitterP50, jitter_p95: jitterP95,
+    packet_loss_pct: packetLossPct, download_mbps: downloadMbps, upload_mbps: uploadMbps,
+    vpn_status: vpnStatus, vpn_name: vpnName, errors
+  };
+
+  // v2.0 CSV header
+  const csvHeader = 'timestamp_utc,device_id,os_version,app_version,timezone,interface,ssid,bssid,band,channel,width_mhz,rssi_dbm,noise_dbm,snr_db,tx_rate_mbps,local_ip,public_ip,latency_ms,jitter_ms,jitter_p50,jitter_p95,packet_loss_pct,download_mbps,upload_mbps,vpn_status,vpn_name,errors,raw_payload';
+
+  ensureDirs();
+  // Check if CSV needs header (new file or old format)
+  if (!fs.existsSync(CSV_FILE) || !fs.readFileSync(CSV_FILE, 'utf8').startsWith('timestamp_utc')) {
+    fs.writeFileSync(CSV_FILE, csvHeader + '\n');
+  }
+
+  const csvPayload = JSON.stringify(payload).replace(/"/g, '\\"');
+  const csvLine = `${timestampUtc},${deviceId},${osVersion},${VERSION},${timezone},${wifiData.interface},${wifiData.ssid},${wifiData.bssid},${wifiData.band},${wifiData.channel},${wifiData.widthMhz},${wifiData.rssiDbm},${wifiData.noiseDbm},${wifiData.snrDb},${wifiData.txRateMbps},${localIp},${publicIp},${latencyMs},${jitterMs},${jitterP50},${jitterP95},${packetLossPct},${downloadMbps},${uploadMbps},${vpnStatus},${vpnName},${errors},"${csvPayload}"`;
+  fs.appendFileSync(CSV_FILE, csvLine + '\n');
+
+  // Send to server
+  if (config.serverUrl) {
+    sendToServerV2(config, payload);
+  }
+
+  fs.appendFileSync(LOG_FILE, `${timestampUtc} - ${status}\n`);
 }
 
 function sendToServer(config, data) {
@@ -272,6 +371,16 @@ function sendToServer(config, data) {
 
   try {
     execSync(`curl -s -X POST -H "Content-Type: application/json" -H "X-API-Key: ${config.apiKey}" -d '${payload}' "${config.serverUrl}/api/results"`, { timeout: 10000 });
+    console.log(colors.green('Sent to server'));
+  } catch {
+    console.log(colors.yellow('Failed to send to server (data saved locally)'));
+  }
+}
+
+function sendToServerV2(config, payload) {
+  const jsonPayload = JSON.stringify(payload);
+  try {
+    execSync(`curl -s -X POST -H "Content-Type: application/json" -H "X-API-Key: ${config.apiKey}" -d '${jsonPayload.replace(/'/g, "'\\''")}' "${config.serverUrl}/api/results"`, { timeout: 10000 });
     console.log(colors.green('Sent to server'));
   } catch {
     console.log(colors.yellow('Failed to send to server (data saved locally)'));
