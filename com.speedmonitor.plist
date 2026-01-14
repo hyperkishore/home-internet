@@ -7,7 +7,7 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/kishore/.local/bin/speed_monitor.sh</string>
+        <string>/Users/kishore/Desktop/Claude-experiments/home-internet/speed_monitor.sh</string>
     </array>
 
     <key>StartInterval</key>
@@ -26,6 +26,8 @@
     <dict>
         <key>PATH</key>
         <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>SPEED_MONITOR_SERVER</key>
+        <string>https://home-internet-production.up.railway.app</string>
     </dict>
 </dict>
 </plist>
