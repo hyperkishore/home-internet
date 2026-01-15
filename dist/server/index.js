@@ -620,6 +620,37 @@ app.get('/api/devices/:device_id/health', (req, res) => {
   }
 });
 
+// API: Device test history (for detail panel)
+app.get('/api/devices/:device_id/history', (req, res) => {
+  const { device_id } = req.params;
+  const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+
+  try {
+    const history = db.prepare(`
+      SELECT
+        timestamp_utc,
+        download_mbps,
+        upload_mbps,
+        latency_ms,
+        jitter_ms,
+        vpn_status,
+        vpn_name,
+        ssid,
+        rssi_dbm,
+        status
+      FROM speed_results
+      WHERE device_id = ?
+      ORDER BY timestamp_utc DESC
+      LIMIT ?
+    `).all(device_id, limit);
+
+    res.json(history);
+  } catch (err) {
+    console.error('Error fetching device history:', err);
+    res.status(500).json({ error: 'Failed to fetch device history' });
+  }
+});
+
 // API: Get device's results
 app.get('/api/results/:device_id', (req, res) => {
   const { device_id } = req.params;

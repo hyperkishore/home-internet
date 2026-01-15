@@ -7,42 +7,26 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
             --background: #09090b;
             --foreground: #fafafa;
             --card: #18181b;
             --card-foreground: #fafafa;
-            --popover: #18181b;
-            --popover-foreground: #fafafa;
-            --primary: #fafafa;
-            --primary-foreground: #18181b;
-            --secondary: #27272a;
-            --secondary-foreground: #fafafa;
+            --border: #27272a;
             --muted: #27272a;
             --muted-foreground: #a1a1aa;
-            --accent: #27272a;
-            --accent-foreground: #fafafa;
-            --destructive: #ef4444;
-            --destructive-foreground: #fafafa;
-            --border: #27272a;
-            --input: #27272a;
-            --ring: #d4d4d8;
-            --radius: 0.5rem;
             --success: #22c55e;
             --warning: #f59e0b;
+            --destructive: #ef4444;
             --info: #3b82f6;
+            --radius: 0.5rem;
         }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             background: var(--background);
             color: var(--foreground);
             min-height: 100vh;
@@ -51,31 +35,69 @@
         }
 
         .container {
-            max-width: 1400px;
+            max-width: 1200px;
             margin: 0 auto;
             padding: 24px;
         }
 
-        /* Header */
+        /* Header - Command Center */
         .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 32px;
-            padding-bottom: 24px;
+            margin-bottom: 24px;
+            padding-bottom: 20px;
             border-bottom: 1px solid var(--border);
         }
 
-        .header-left h1 {
-            font-size: 1.875rem;
-            font-weight: 700;
-            letter-spacing: -0.025em;
-            margin-bottom: 4px;
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
         }
 
-        .header-left p {
-            color: var(--muted-foreground);
+        .header-left h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+        }
+
+        .health-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 9999px;
+            font-weight: 600;
             font-size: 0.875rem;
+        }
+
+        .health-indicator.healthy {
+            background: rgba(34, 197, 94, 0.15);
+            color: var(--success);
+        }
+
+        .health-indicator.warning {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--warning);
+        }
+
+        .health-indicator.critical {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--destructive);
+        }
+
+        .health-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
         }
 
         .header-right {
@@ -84,28 +106,16 @@
             gap: 12px;
         }
 
-        .badge {
-            display: inline-flex;
-            align-items: center;
-            padding: 4px 10px;
+        .last-update {
             font-size: 0.75rem;
-            font-weight: 500;
-            border-radius: 9999px;
-            background: var(--secondary);
             color: var(--muted-foreground);
-        }
-
-        .badge.success {
-            background: rgba(34, 197, 94, 0.1);
-            color: var(--success);
         }
 
         .btn {
             display: inline-flex;
             align-items: center;
-            justify-content: center;
-            gap: 8px;
-            padding: 8px 16px;
+            gap: 6px;
+            padding: 8px 14px;
             font-size: 0.875rem;
             font-weight: 500;
             border-radius: var(--radius);
@@ -116,26 +126,120 @@
             transition: all 0.15s ease;
         }
 
-        .btn:hover {
-            background: var(--accent);
+        .btn:hover { background: var(--muted); }
+
+        /* Problem Spotlight */
+        .problem-spotlight {
+            background: rgba(239, 68, 68, 0.08);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            border-radius: var(--radius);
+            margin-bottom: 24px;
+            overflow: hidden;
         }
 
-        .btn-primary {
-            background: var(--foreground);
-            color: var(--background);
-            border-color: var(--foreground);
+        .problem-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            background: rgba(239, 68, 68, 0.05);
+            border-bottom: 1px solid rgba(239, 68, 68, 0.1);
         }
 
-        .btn-primary:hover {
-            background: #e4e4e7;
+        .problem-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 600;
+            color: var(--destructive);
+        }
+
+        .problem-count {
+            background: var(--destructive);
+            color: white;
+            padding: 2px 10px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .problem-list {
+            padding: 12px 20px;
+        }
+
+        .problem-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 0;
+            border-bottom: 1px solid rgba(239, 68, 68, 0.1);
+        }
+
+        .problem-item:last-child { border-bottom: none; }
+
+        .problem-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .problem-severity {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .problem-severity.critical { background: var(--destructive); }
+        .problem-severity.warning { background: var(--warning); }
+
+        .problem-user {
+            font-weight: 500;
+        }
+
+        .problem-issue {
+            font-size: 0.8125rem;
+            color: var(--muted-foreground);
+            margin-top: 2px;
+        }
+
+        .problem-meta {
+            text-align: right;
+        }
+
+        .problem-value {
+            font-weight: 600;
+            color: var(--destructive);
+        }
+
+        .problem-baseline {
+            font-size: 0.75rem;
+            color: var(--muted-foreground);
+        }
+
+        .no-problems {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 32px;
+            background: rgba(34, 197, 94, 0.08);
+            border: 1px solid rgba(34, 197, 94, 0.2);
+            border-radius: var(--radius);
+            margin-bottom: 24px;
+            color: var(--success);
+            font-weight: 500;
         }
 
         /* Stats Grid */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            grid-template-columns: repeat(4, 1fr);
             gap: 16px;
             margin-bottom: 24px;
+        }
+
+        @media (max-width: 768px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
         }
 
         .stat-card {
@@ -146,62 +250,35 @@
         }
 
         .stat-label {
-            font-size: 0.875rem;
+            font-size: 0.75rem;
             color: var(--muted-foreground);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
             margin-bottom: 8px;
         }
 
         .stat-value {
-            font-size: 1.875rem;
+            font-size: 1.75rem;
             font-weight: 700;
             letter-spacing: -0.025em;
         }
 
-        .stat-value.success { color: var(--success); }
-        .stat-value.warning { color: var(--warning); }
-        .stat-value.destructive { color: var(--destructive); }
-
-        .stat-change {
-            font-size: 0.75rem;
+        .stat-unit {
+            font-size: 0.875rem;
+            font-weight: 400;
             color: var(--muted-foreground);
-            margin-top: 4px;
+            margin-left: 4px;
         }
 
-        .stat-change.positive { color: var(--success); }
-        .stat-change.negative { color: var(--destructive); }
-
-        /* Grid Layouts */
-        .grid-2 {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 16px;
-            margin-bottom: 16px;
-        }
-
-        .grid-3 {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 16px;
-            margin-bottom: 16px;
-        }
-
-        @media (max-width: 1024px) {
-            .grid-3 { grid-template-columns: 1fr; }
-        }
-
-        @media (max-width: 768px) {
-            .grid-2 { grid-template-columns: 1fr; }
-        }
-
-        /* Card / Section */
-        .card {
+        /* Device Fleet */
+        .fleet-section {
             background: var(--card);
             border: 1px solid var(--border);
             border-radius: var(--radius);
             overflow: hidden;
         }
 
-        .card-header {
+        .fleet-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -209,301 +286,293 @@
             border-bottom: 1px solid var(--border);
         }
 
-        .card-title {
-            font-size: 0.875rem;
+        .fleet-title {
             font-weight: 600;
             display: flex;
             align-items: center;
             gap: 8px;
         }
 
-        .card-title svg {
-            width: 16px;
-            height: 16px;
-            color: var(--muted-foreground);
-        }
-
-        .card-content {
-            padding: 20px;
-        }
-
-        .card-footer {
-            padding: 12px 20px;
-            border-top: 1px solid var(--border);
-            background: rgba(255, 255, 255, 0.02);
-        }
-
-        /* Chart Container */
-        .chart-container {
-            position: relative;
-            height: 280px;
-        }
-
-        .chart-container.small {
-            height: 200px;
-        }
-
-        /* Tables */
-        .table-container {
-            overflow-x: auto;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.875rem;
-        }
-
-        th, td {
-            padding: 12px 16px;
-            text-align: left;
-            border-bottom: 1px solid var(--border);
-        }
-
-        th {
-            font-weight: 500;
-            color: var(--muted-foreground);
+        .fleet-count {
             font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
+            color: var(--muted-foreground);
+            font-weight: 400;
         }
 
-        tr:last-child td {
-            border-bottom: none;
-        }
-
-        tbody tr:hover {
-            background: rgba(255, 255, 255, 0.02);
-        }
-
-        /* Device Cards */
-        .devices-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-            gap: 12px;
-            max-height: 480px;
-            overflow-y: auto;
-        }
-
-        .device-card {
+        .fleet-filters {
             display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 16px;
-            background: var(--background);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            transition: border-color 0.15s ease;
-        }
-
-        .device-card:hover {
-            border-color: var(--muted-foreground);
-        }
-
-        .device-card.vpn {
-            border-left: 3px solid var(--success);
-        }
-
-        .device-card.problem {
-            border-left: 3px solid var(--destructive);
-        }
-
-        .device-info {
-            display: flex;
-            align-items: center;
             gap: 12px;
         }
 
-        .device-avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: var(--secondary);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.875rem;
-            font-weight: 600;
-        }
-
-        .device-meta h3 {
-            font-size: 0.875rem;
-            font-weight: 500;
-            margin-bottom: 2px;
-        }
-
-        .device-meta p {
-            font-size: 0.75rem;
-            color: var(--muted-foreground);
-        }
-
-        .device-stats {
-            text-align: right;
-        }
-
-        .device-speed {
-            font-size: 1.125rem;
-            font-weight: 600;
-        }
-
-        .device-jitter {
-            font-size: 0.75rem;
-            color: var(--muted-foreground);
-        }
-
-        /* Status Indicators */
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            display: inline-block;
-        }
-
-        .status-dot.online { background: var(--success); }
-        .status-dot.offline { background: var(--destructive); }
-        .status-dot.vpn { background: var(--info); }
-
-        .vpn-badge {
-            display: inline-flex;
-            align-items: center;
-            padding: 2px 8px;
-            font-size: 0.625rem;
-            font-weight: 500;
-            border-radius: 9999px;
-            background: rgba(34, 197, 94, 0.1);
-            color: var(--success);
-            margin-left: 8px;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-
-        /* Filter Bar */
-        .filter-bar {
-            display: flex;
-            gap: 12px;
-            margin-bottom: 16px;
-        }
-
-        .filter-bar select,
-        .filter-bar input {
+        .fleet-filters input,
+        .fleet-filters select {
             background: var(--background);
             border: 1px solid var(--border);
             border-radius: var(--radius);
             padding: 8px 12px;
-            font-size: 0.875rem;
+            font-size: 0.8125rem;
             color: var(--foreground);
             outline: none;
-            transition: border-color 0.15s ease;
         }
 
-        .filter-bar select:focus,
-        .filter-bar input:focus {
-            border-color: var(--ring);
+        .fleet-filters input {
+            width: 200px;
         }
 
-        .filter-bar input {
-            flex: 1;
-            max-width: 280px;
+        .fleet-filters input:focus,
+        .fleet-filters select:focus {
+            border-color: var(--info);
         }
 
-        /* Recommendations */
-        .recommendation-item {
-            padding: 12px 16px;
-            border-radius: var(--radius);
-            background: var(--background);
-            border: 1px solid var(--border);
-            margin-bottom: 8px;
+        /* Device Table */
+        .device-table {
+            width: 100%;
+            border-collapse: collapse;
         }
 
-        .recommendation-item:last-child {
-            margin-bottom: 0;
-        }
-
-        .recommendation-item.high {
-            border-left: 3px solid var(--destructive);
-        }
-
-        .recommendation-item.medium {
-            border-left: 3px solid var(--warning);
-        }
-
-        .recommendation-item.low {
-            border-left: 3px solid var(--success);
-        }
-
-        .recommendation-title {
-            font-size: 0.875rem;
+        .device-table th {
+            text-align: left;
+            padding: 12px 20px;
+            font-size: 0.7rem;
             font-weight: 500;
-            margin-bottom: 4px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .recommendation-desc {
-            font-size: 0.8125rem;
             color: var(--muted-foreground);
-        }
-
-        /* Alert Items */
-        .alert-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            padding: 12px 0;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            background: var(--background);
             border-bottom: 1px solid var(--border);
         }
 
-        .alert-item:last-child {
+        .device-table tbody tr {
+            cursor: pointer;
+            transition: background 0.1s ease;
+        }
+
+        .device-table tbody tr:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .device-table td {
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.875rem;
+        }
+
+        .device-table tbody tr:last-child td {
             border-bottom: none;
         }
 
-        .alert-content {
-            flex: 1;
+        .device-user {
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
 
-        .alert-type {
-            font-size: 0.875rem;
+        .device-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .device-status.online { background: var(--success); }
+        .device-status.offline { background: var(--muted-foreground); }
+        .device-status.problem { background: var(--destructive); }
+
+        .device-email {
             font-weight: 500;
-            margin-bottom: 2px;
         }
 
-        .alert-message {
-            font-size: 0.8125rem;
-            color: var(--muted-foreground);
-        }
-
-        .alert-time {
+        .device-hostname {
             font-size: 0.75rem;
             color: var(--muted-foreground);
         }
 
-        /* Heatmap */
-        .heatmap-grid {
-            display: grid;
-            grid-template-columns: repeat(24, 1fr);
-            gap: 3px;
-        }
-
-        .heatmap-cell {
-            aspect-ratio: 1;
-            border-radius: 4px;
-            display: flex;
+        .vpn-badge {
+            display: inline-flex;
             align-items: center;
-            justify-content: center;
-            font-size: 0.625rem;
+            gap: 4px;
+            padding: 3px 8px;
+            font-size: 0.7rem;
             font-weight: 500;
-            transition: transform 0.1s ease;
+            border-radius: 9999px;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
         }
 
-        .heatmap-cell:hover {
-            transform: scale(1.1);
+        .vpn-badge.connected {
+            background: rgba(34, 197, 94, 0.15);
+            color: var(--success);
         }
 
-        /* Empty State */
+        .vpn-badge.disconnected {
+            background: rgba(161, 161, 170, 0.15);
+            color: var(--muted-foreground);
+        }
+
+        .speed-value {
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .speed-value.good { color: var(--success); }
+        .speed-value.warning { color: var(--warning); }
+        .speed-value.bad { color: var(--destructive); }
+
+        .jitter-value {
+            font-variant-numeric: tabular-nums;
+        }
+
+        .jitter-value.good { color: var(--muted-foreground); }
+        .jitter-value.warning { color: var(--warning); }
+        .jitter-value.bad { color: var(--destructive); }
+
+        .last-seen {
+            font-size: 0.8125rem;
+            color: var(--muted-foreground);
+        }
+
+        .arrow-icon {
+            color: var(--muted-foreground);
+            opacity: 0;
+            transition: opacity 0.15s ease;
+        }
+
+        .device-table tbody tr:hover .arrow-icon {
+            opacity: 1;
+        }
+
+        /* Slide-in Panel */
+        .panel-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 100;
+        }
+
+        .panel-overlay.open {
+            display: block;
+        }
+
+        .detail-panel {
+            position: fixed;
+            top: 0;
+            right: -450px;
+            width: 450px;
+            height: 100vh;
+            background: var(--card);
+            border-left: 1px solid var(--border);
+            z-index: 101;
+            transition: right 0.3s ease;
+            overflow-y: auto;
+        }
+
+        .detail-panel.open {
+            right: 0;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            background: var(--card);
+        }
+
+        .panel-close {
+            background: none;
+            border: none;
+            color: var(--muted-foreground);
+            cursor: pointer;
+            padding: 8px;
+            border-radius: var(--radius);
+            transition: all 0.15s ease;
+        }
+
+        .panel-close:hover {
+            background: var(--muted);
+            color: var(--foreground);
+        }
+
+        .panel-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+        }
+
+        .panel-content {
+            padding: 20px;
+        }
+
+        .panel-section {
+            margin-bottom: 24px;
+        }
+
+        .panel-section-title {
+            font-size: 0.7rem;
+            font-weight: 500;
+            color: var(--muted-foreground);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 12px;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .info-item {
+            background: var(--background);
+            padding: 12px;
+            border-radius: var(--radius);
+        }
+
+        .info-label {
+            font-size: 0.7rem;
+            color: var(--muted-foreground);
+            margin-bottom: 4px;
+        }
+
+        .info-value {
+            font-weight: 500;
+        }
+
+        .test-history {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .test-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.8125rem;
+        }
+
+        .test-row:last-child { border-bottom: none; }
+
+        .test-time {
+            color: var(--muted-foreground);
+        }
+
+        .test-speeds {
+            display: flex;
+            gap: 16px;
+        }
+
+        /* Empty state */
         .empty-state {
             text-align: center;
-            padding: 40px 20px;
+            padding: 60px 20px;
             color: var(--muted-foreground);
         }
 
@@ -517,1046 +586,527 @@
         /* Loading */
         .loading {
             text-align: center;
-            padding: 24px;
+            padding: 40px;
             color: var(--muted-foreground);
-        }
-
-        /* Select dropdown inside card header */
-        .card-header select {
-            background: var(--background);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 6px 10px;
-            font-size: 0.75rem;
-            color: var(--foreground);
-            outline: none;
-        }
-
-        /* Comparison Cards */
-        .comparison-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 12px;
-            margin-top: 16px;
-        }
-
-        .comparison-card {
-            text-align: center;
-            padding: 16px;
-            background: var(--background);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-        }
-
-        .comparison-label {
-            font-size: 0.75rem;
-            color: var(--muted-foreground);
-            margin-bottom: 4px;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-
-        .comparison-value {
-            font-size: 1.25rem;
-            font-weight: 600;
-        }
-
-        .comparison-value.highlight {
-            color: var(--success);
         }
 
         /* Scrollbar */
-        ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
-        }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--background); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--muted-foreground); }
 
-        ::-webkit-scrollbar-track {
-            background: var(--background);
+        @media (max-width: 640px) {
+            .container { padding: 16px; }
+            .header { flex-direction: column; gap: 16px; align-items: flex-start; }
+            .header-right { width: 100%; justify-content: space-between; }
+            .fleet-header { flex-direction: column; gap: 12px; align-items: flex-start; }
+            .fleet-filters { width: 100%; }
+            .fleet-filters input { flex: 1; width: auto; }
+            .detail-panel { width: 100%; right: -100%; }
         }
-
-        ::-webkit-scrollbar-thumb {
-            background: var(--border);
-            border-radius: 4px;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: var(--muted-foreground);
-        }
-
-        /* Trend Summary */
-        .trend-summary {
-            display: flex;
-            justify-content: center;
-            gap: 24px;
-            margin-top: 16px;
-        }
-
-        .trend-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 16px;
-            background: var(--background);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-        }
-
-        .trend-item .value {
-            font-weight: 600;
-        }
-
-        .trend-item .label {
-            font-size: 0.8125rem;
-            color: var(--muted-foreground);
-        }
-
-        .trend-up { color: var(--success); }
-        .trend-down { color: var(--destructive); }
-        .trend-stable { color: var(--muted-foreground); }
     </style>
 </head>
 <body>
     <div class="container">
-        <!-- Header -->
+        <!-- Header - Command Center -->
         <header class="header">
             <div class="header-left">
                 <h1>Speed Monitor</h1>
-                <p>Real-time network performance tracking</p>
+                <div class="health-indicator healthy" id="healthIndicator">
+                    <span class="health-dot"></span>
+                    <span id="healthText">All Systems Healthy</span>
+                </div>
             </div>
             <div class="header-right">
-                <span class="badge success" id="statusBadge">● Online</span>
-                <span class="badge" id="lastUpdate">Updated: --</span>
+                <span class="last-update" id="lastUpdate">Updated: --</span>
                 <button class="btn" onclick="loadAllData()">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
                     Refresh
                 </button>
             </div>
         </header>
 
-        <!-- Main Stats -->
+        <!-- Problem Spotlight (shown only if problems exist) -->
+        <div id="problemSpotlight"></div>
+
+        <!-- Stats Grid -->
         <div class="stats-grid">
             <div class="stat-card">
-                <div class="stat-label">Active Devices</div>
-                <div class="stat-value" id="totalDevices">--</div>
+                <div class="stat-label">Online Devices</div>
+                <div class="stat-value" id="onlineDevices">--</div>
             </div>
             <div class="stat-card">
                 <div class="stat-label">Avg Download</div>
-                <div class="stat-value" id="avgDownload">--</div>
-                <div class="stat-change" id="downloadChange"></div>
+                <div class="stat-value"><span id="avgDownload">--</span><span class="stat-unit">Mbps</span></div>
             </div>
             <div class="stat-card">
                 <div class="stat-label">Avg Upload</div>
-                <div class="stat-value" id="avgUpload">--</div>
+                <div class="stat-value"><span id="avgUpload">--</span><span class="stat-unit">Mbps</span></div>
             </div>
             <div class="stat-card">
                 <div class="stat-label">Avg Latency</div>
-                <div class="stat-value" id="avgLatency">--</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Avg Jitter</div>
-                <div class="stat-value" id="avgJitter">--</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">VPN Connected</div>
-                <div class="stat-value success" id="vpnCount">--</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Total Tests</div>
-                <div class="stat-value" id="totalTests">--</div>
-            </div>
-        </div>
-
-        <!-- Charts Row 1 -->
-        <div class="grid-2">
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-                        Speed Trends (24h)
-                    </div>
-                </div>
-                <div class="card-content">
-                    <div class="chart-container">
-                        <canvas id="trendChart"></canvas>
-                    </div>
-                </div>
-            </div>
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                        VPN Status
-                    </div>
-                </div>
-                <div class="card-content">
-                    <div class="chart-container small">
-                        <canvas id="vpnChart"></canvas>
-                    </div>
-                    <div class="comparison-grid" id="vpnComparison"></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Charts Row 2 -->
-        <div class="grid-3">
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect width="4" height="7" x="7" y="10" rx="1"/><rect width="4" height="12" x="15" y="5" rx="1"/></svg>
-                        Jitter Distribution
-                    </div>
-                </div>
-                <div class="card-content">
-                    <div class="chart-container small">
-                        <canvas id="jitterChart"></canvas>
-                    </div>
-                </div>
-            </div>
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" x2="12.01" y1="20" y2="20"/></svg>
-                        Band Usage
-                    </div>
-                </div>
-                <div class="card-content">
-                    <div class="chart-container small">
-                        <canvas id="bandChart"></canvas>
-                    </div>
-                </div>
-            </div>
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
-                        Problem Devices
-                    </div>
-                </div>
-                <div class="card-content">
-                    <div class="table-container" style="max-height: 200px; overflow-y: auto;">
-                        <table id="problemTable">
-                            <thead><tr><th>Device</th><th>Jitter</th><th>Loss</th></tr></thead>
-                            <tbody></tbody>
-                        </table>
-                    </div>
-                </div>
+                <div class="stat-value"><span id="avgLatency">--</span><span class="stat-unit">ms</span></div>
             </div>
         </div>
 
         <!-- Device Fleet -->
-        <div class="card" style="margin-bottom: 16px;">
-            <div class="card-header">
-                <div class="card-title">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
-                    Device Fleet
+        <div class="fleet-section">
+            <div class="fleet-header">
+                <div class="fleet-title">
+                    All Devices
+                    <span class="fleet-count" id="deviceCount">(0)</span>
                 </div>
-            </div>
-            <div class="card-content">
-                <div class="filter-bar">
+                <div class="fleet-filters">
+                    <input type="text" id="searchDevice" placeholder="Search by email..." oninput="filterDevices()">
                     <select id="filterVPN" onchange="filterDevices()">
                         <option value="">All VPN Status</option>
                         <option value="connected">VPN Connected</option>
                         <option value="disconnected">VPN Disconnected</option>
                     </select>
-                    <input type="text" id="searchDevice" placeholder="Search devices..." oninput="filterDevices()">
-                </div>
-                <div class="devices-grid" id="devicesGrid">
-                    <div class="loading">Loading devices...</div>
                 </div>
             </div>
-        </div>
-
-        <!-- SSID Table -->
-        <div class="card" style="margin-bottom: 16px;">
-            <div class="card-header">
-                <div class="card-title">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
-                    Network Performance by SSID
-                </div>
-            </div>
-            <div class="card-content">
-                <div class="table-container">
-                    <table id="ssidTable">
-                        <thead>
-                            <tr>
-                                <th>SSID</th>
-                                <th>Devices</th>
-                                <th>Tests</th>
-                                <th>Avg Download</th>
-                                <th>Avg Upload</th>
-                                <th>Avg RSSI</th>
-                            </tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <!-- Historical Trends -->
-        <div class="card" style="margin-bottom: 16px;">
-            <div class="card-header">
-                <div class="card-title">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/></svg>
-                    Historical Trends
-                </div>
-                <select id="trendDays" onchange="loadHistoricalTrends()">
-                    <option value="7">Last 7 days</option>
-                    <option value="30" selected>Last 30 days</option>
-                    <option value="60">Last 60 days</option>
-                    <option value="90">Last 90 days</option>
-                </select>
-            </div>
-            <div class="card-content">
-                <div class="chart-container">
-                    <canvas id="historicalChart"></canvas>
-                </div>
-                <div class="trend-summary" id="trendSummary"></div>
-            </div>
-        </div>
-
-        <!-- ISP & WiFi Recommendations -->
-        <div class="grid-2">
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg>
-                        ISP Comparison
-                    </div>
-                </div>
-                <div class="card-content">
-                    <div class="chart-container small">
-                        <canvas id="ispChart"></canvas>
-                    </div>
-                </div>
-            </div>
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-                        WiFi Recommendations
-                    </div>
-                </div>
-                <div class="card-content" style="max-height: 250px; overflow-y: auto;">
-                    <div id="wifiRecommendations">
-                        <div class="loading">Loading recommendations...</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Alerts & Time of Day -->
-        <div class="grid-2">
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
-                        Recent Alerts
-                    </div>
-                </div>
-                <div class="card-content" style="max-height: 280px; overflow-y: auto;">
-                    <div id="alertsList">
-                        <div class="loading">Loading alerts...</div>
-                    </div>
-                </div>
-            </div>
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                        Performance by Hour
-                    </div>
-                </div>
-                <div class="card-content">
-                    <div class="heatmap-grid" id="timeOfDayGrid">
-                        <div class="loading" style="grid-column: span 24;">Loading...</div>
-                    </div>
-                    <p style="margin-top: 12px; font-size: 0.75rem; color: var(--muted-foreground); text-align: center;">
-                        Hours 0-23 • Brighter = Faster speeds
-                    </p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Link Quality Correlation -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="7.5" r="1.5"/><circle cx="18.5" cy="5.5" r="1.5"/><circle cx="11.5" cy="11.5" r="1.5"/><circle cx="7.5" cy="16.5" r="1.5"/><circle cx="17.5" cy="14.5" r="1.5"/></svg>
-                    Signal vs Speed Correlation
-                </div>
-                <span class="badge" id="outlierCount">-- outliers</span>
-            </div>
-            <div class="card-content">
-                <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
-                    <div class="chart-container" style="height: 280px;">
-                        <canvas id="scatterChart"></canvas>
-                    </div>
-                    <div>
-                        <h4 style="font-size: 0.75rem; color: var(--muted-foreground); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em;">Insights</h4>
-                        <div id="scatterInsights" style="font-size: 0.8125rem;">
-                            <p class="loading">Loading correlation data...</p>
-                        </div>
-                    </div>
-                </div>
+            <div id="deviceTableContainer">
+                <div class="loading">Loading devices...</div>
             </div>
         </div>
     </div>
 
-    <script>
-        let trendChart = null, vpnChart = null, jitterChart = null, bandChart = null, historicalChart = null, ispChart = null, scatterChart = null;
-        let allDevices = [];
+    <!-- Detail Panel Overlay -->
+    <div class="panel-overlay" id="panelOverlay" onclick="closePanel()"></div>
 
-        // Chart.js defaults for dark theme
-        Chart.defaults.color = '#a1a1aa';
-        Chart.defaults.borderColor = '#27272a';
+    <!-- Device Detail Panel -->
+    <div class="detail-panel" id="detailPanel">
+        <div class="panel-header">
+            <button class="panel-close" onclick="closePanel()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+            <span class="panel-title" id="panelTitle">Device Details</span>
+        </div>
+        <div class="panel-content" id="panelContent">
+            <!-- Populated by JS -->
+        </div>
+    </div>
+
+    <script>
+        let allDevices = [];
+        let deviceHistory = {};
 
         async function loadAllData() {
-            await Promise.all([
-                loadStats(),
-                loadVPNStats(),
-                loadJitterStats(),
-                loadWiFiStats(),
-                loadHistoricalTrends(),
-                loadISPStats(),
-                loadWiFiRecommendations(),
-                loadAlerts(),
-                loadTimeOfDay(),
-                loadLinkQualityCorrelation()
-            ]);
-            document.getElementById('lastUpdate').textContent = 'Updated: ' + new Date().toLocaleTimeString();
-        }
-
-        async function loadStats() {
             try {
                 const response = await fetch('/api/stats');
                 const data = await response.json();
 
-                document.getElementById('totalDevices').textContent = data.overall.total_devices || 0;
-                document.getElementById('avgDownload').textContent = (data.overall.avg_download || 0) + ' Mbps';
-                document.getElementById('avgUpload').textContent = (data.overall.avg_upload || 0) + ' Mbps';
-                document.getElementById('avgLatency').textContent = (data.overall.avg_latency || 0) + ' ms';
-                document.getElementById('avgJitter').textContent = (data.overall.avg_jitter || 0) + ' ms';
-                document.getElementById('totalTests').textContent = data.overall.total_tests || 0;
+                // Update stats
+                document.getElementById('avgDownload').textContent = Math.round(data.overall.avg_download || 0);
+                document.getElementById('avgUpload').textContent = Math.round(data.overall.avg_upload || 0);
+                document.getElementById('avgLatency').textContent = Math.round(data.overall.avg_latency || 0);
 
-                const vpnCount = data.perDevice.filter(d => d.vpn_status === 'connected').length;
-                document.getElementById('vpnCount').textContent = vpnCount;
+                // Process devices
+                allDevices = data.perDevice || [];
 
-                updateTrendChart(data.hourly);
-                allDevices = data.perDevice;
+                // Calculate online count (tested in last hour)
+                const now = Date.now();
+                const onlineDevices = allDevices.filter(d => {
+                    const lastTest = new Date(d.last_test).getTime();
+                    return (now - lastTest) < 60 * 60 * 1000; // 1 hour
+                });
+                document.getElementById('onlineDevices').textContent = onlineDevices.length;
+
+                // Identify problem devices
+                const problems = identifyProblems(allDevices);
+                updateHealthIndicator(problems);
+                renderProblems(problems);
+
+                // Sort devices: problems first, then online, then offline
+                sortDevices();
                 filterDevices();
+
+                document.getElementById('lastUpdate').textContent = 'Updated: ' + new Date().toLocaleTimeString();
             } catch (err) {
                 console.error('Failed to load stats:', err);
             }
         }
 
-        async function loadVPNStats() {
-            try {
-                const response = await fetch('/api/stats/vpn');
-                const data = await response.json();
-                updateVPNChart(data);
-            } catch (err) {
-                console.error('Failed to load VPN stats:', err);
-            }
-        }
+        function identifyProblems(devices) {
+            const problems = [];
+            const now = Date.now();
 
-        async function loadJitterStats() {
-            try {
-                const response = await fetch('/api/stats/jitter');
-                const data = await response.json();
-                updateJitterChart(data.distribution);
-                updateProblemDevices(data.problemDevices);
-            } catch (err) {
-                console.error('Failed to load jitter stats:', err);
-            }
-        }
+            devices.forEach(device => {
+                const lastTest = new Date(device.last_test).getTime();
+                const hoursSince = (now - lastTest) / (1000 * 60 * 60);
+                const isOnline = hoursSince < 1;
 
-        async function loadWiFiStats() {
-            try {
-                const response = await fetch('/api/stats/wifi');
-                const data = await response.json();
-                updateBandChart(data.bandDistribution);
-                updateSSIDTable(data.bySSID);
-            } catch (err) {
-                console.error('Failed to load WiFi stats:', err);
-            }
-        }
-
-        function updateTrendChart(hourlyData) {
-            const ctx = document.getElementById('trendChart').getContext('2d');
-            if (trendChart) trendChart.destroy();
-
-            trendChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: hourlyData.map(d => d.hour?.split(' ')[1] || d.hour),
-                    datasets: [
-                        {
-                            label: 'Download',
-                            data: hourlyData.map(d => d.avg_download),
-                            borderColor: '#3b82f6',
-                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                            fill: true,
-                            tension: 0.4,
-                            borderWidth: 2
-                        },
-                        {
-                            label: 'Upload',
-                            data: hourlyData.map(d => d.avg_upload),
-                            borderColor: '#22c55e',
-                            backgroundColor: 'rgba(34, 197, 94, 0.1)',
-                            fill: true,
-                            tension: 0.4,
-                            borderWidth: 2
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { position: 'top', align: 'end' }
-                    },
-                    scales: {
-                        x: { grid: { display: false } },
-                        y: { grid: { color: '#27272a' } }
-                    }
+                // High jitter (>20ms is concerning, >40ms is critical)
+                if (device.avg_jitter > 20) {
+                    problems.push({
+                        device,
+                        severity: device.avg_jitter > 40 ? 'critical' : 'warning',
+                        issue: `High jitter (${device.avg_jitter}ms)`,
+                        value: `${device.avg_jitter}ms`,
+                        baseline: 'Usually <10ms'
+                    });
                 }
-            });
-        }
 
-        function updateVPNChart(data) {
-            const ctx = document.getElementById('vpnChart').getContext('2d');
-            if (vpnChart) vpnChart.destroy();
+                // VPN not connected (if policy requires it)
+                if (device.vpn_status !== 'connected' && isOnline) {
+                    problems.push({
+                        device,
+                        severity: 'warning',
+                        issue: 'VPN disconnected',
+                        value: 'No VPN',
+                        baseline: 'Policy requires Zscaler'
+                    });
+                }
 
-            const labels = data.distribution.map(d => d.vpn_name === 'none' ? 'No VPN' : d.vpn_name);
-            const counts = data.distribution.map(d => d.count);
-            const colors = data.distribution.map(d => d.vpn_status === 'connected' ? '#22c55e' : '#3f3f46');
-
-            vpnChart = new Chart(ctx, {
-                type: 'doughnut',
-                data: {
-                    labels,
-                    datasets: [{ data: counts, backgroundColor: colors, borderWidth: 0 }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { position: 'right' }
-                    },
-                    cutout: '65%'
+                // Very low speed (less than 30 Mbps)
+                if (device.avg_download < 30 && device.avg_download > 0) {
+                    problems.push({
+                        device,
+                        severity: device.avg_download < 15 ? 'critical' : 'warning',
+                        issue: `Slow connection (${Math.round(device.avg_download)} Mbps)`,
+                        value: `${Math.round(device.avg_download)} Mbps`,
+                        baseline: 'Usually >100 Mbps'
+                    });
                 }
             });
 
-            const comp = data.comparison;
-            if (comp && comp.length === 2) {
-                const vpnOn = comp.find(c => c.mode === 'VPN On') || {};
-                const vpnOff = comp.find(c => c.mode === 'VPN Off') || {};
-                document.getElementById('vpnComparison').innerHTML = `
-                    <div class="comparison-card">
-                        <div class="comparison-label">VPN On</div>
-                        <div class="comparison-value highlight">${vpnOn.avg_download || '--'} Mbps</div>
-                    </div>
-                    <div class="comparison-card">
-                        <div class="comparison-label">VPN Off</div>
-                        <div class="comparison-value">${vpnOff.avg_download || '--'} Mbps</div>
+            return problems;
+        }
+
+        function updateHealthIndicator(problems) {
+            const indicator = document.getElementById('healthIndicator');
+            const text = document.getElementById('healthText');
+
+            const critical = problems.filter(p => p.severity === 'critical').length;
+            const warnings = problems.filter(p => p.severity === 'warning').length;
+
+            indicator.classList.remove('healthy', 'warning', 'critical');
+
+            if (critical > 0) {
+                indicator.classList.add('critical');
+                text.textContent = `${critical} Critical Issue${critical > 1 ? 's' : ''}`;
+            } else if (warnings > 0) {
+                indicator.classList.add('warning');
+                text.textContent = `${warnings} Warning${warnings > 1 ? 's' : ''}`;
+            } else {
+                indicator.classList.add('healthy');
+                text.textContent = 'All Systems Healthy';
+            }
+        }
+
+        function renderProblems(problems) {
+            const container = document.getElementById('problemSpotlight');
+
+            if (problems.length === 0) {
+                container.innerHTML = `
+                    <div class="no-problems">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                        All devices operating normally
                     </div>
                 `;
+                return;
             }
-        }
 
-        function updateJitterChart(distribution) {
-            const ctx = document.getElementById('jitterChart').getContext('2d');
-            if (jitterChart) jitterChart.destroy();
-
-            const colors = {
-                '< 5ms': '#22c55e',
-                '5-10ms': '#84cc16',
-                '10-20ms': '#f59e0b',
-                '20-50ms': '#f97316',
-                '> 50ms': '#ef4444'
-            };
-
-            jitterChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: distribution.map(d => d.bucket),
-                    datasets: [{
-                        label: 'Tests',
-                        data: distribution.map(d => d.count),
-                        backgroundColor: distribution.map(d => colors[d.bucket] || '#3f3f46'),
-                        borderWidth: 0,
-                        borderRadius: 4
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        x: { grid: { display: false } },
-                        y: { grid: { color: '#27272a' } }
-                    }
+            // Group by device (one entry per device with worst issue)
+            const byDevice = {};
+            problems.forEach(p => {
+                const id = p.device.device_id;
+                if (!byDevice[id] || (p.severity === 'critical' && byDevice[id].severity !== 'critical')) {
+                    byDevice[id] = p;
                 }
             });
+
+            const uniqueProblems = Object.values(byDevice).slice(0, 5); // Show top 5
+
+            container.innerHTML = `
+                <div class="problem-spotlight">
+                    <div class="problem-header">
+                        <div class="problem-title">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                            Devices Need Attention
+                        </div>
+                        <span class="problem-count">${Object.keys(byDevice).length}</span>
+                    </div>
+                    <div class="problem-list">
+                        ${uniqueProblems.map(p => {
+                            const displayName = p.device.user_email || p.device.device_id.slice(0, 12) + '...';
+                            const lastSeen = getRelativeTime(p.device.last_test);
+                            return `
+                                <div class="problem-item" onclick="openPanel('${p.device.device_id}')">
+                                    <div class="problem-info">
+                                        <div class="problem-severity ${p.severity}"></div>
+                                        <div>
+                                            <div class="problem-user">${displayName}</div>
+                                            <div class="problem-issue">${p.issue} • Last seen ${lastSeen}</div>
+                                        </div>
+                                    </div>
+                                    <div class="problem-meta">
+                                        <div class="problem-value">${p.value}</div>
+                                        <div class="problem-baseline">${p.baseline}</div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
         }
 
-        function updateBandChart(bandData) {
-            const ctx = document.getElementById('bandChart').getContext('2d');
-            if (bandChart) bandChart.destroy();
+        function sortDevices() {
+            const now = Date.now();
 
-            if (!bandData || bandData.length === 0) {
-                ctx.font = '14px Inter, sans-serif';
-                ctx.fillStyle = '#71717a';
-                ctx.fillText('No WiFi data available', 50, 100);
-                return;
-            }
+            allDevices.sort((a, b) => {
+                // Problem severity (higher jitter = more problematic)
+                const aProb = a.avg_jitter > 20 ? (a.avg_jitter > 40 ? 2 : 1) : 0;
+                const bProb = b.avg_jitter > 20 ? (b.avg_jitter > 40 ? 2 : 1) : 0;
+                if (aProb !== bProb) return bProb - aProb;
 
-            const colors = {
-                '2.4GHz': '#f43f5e',
-                '5GHz': '#3b82f6',
-                '6GHz': '#f59e0b',
-                'none': '#3f3f46',
-                'unknown': '#52525b'
-            };
+                // Online status
+                const aOnline = (now - new Date(a.last_test).getTime()) < 60 * 60 * 1000;
+                const bOnline = (now - new Date(b.last_test).getTime()) < 60 * 60 * 1000;
+                if (aOnline !== bOnline) return bOnline - aOnline;
 
-            bandChart = new Chart(ctx, {
-                type: 'pie',
-                data: {
-                    labels: bandData.map(d => d.band || 'Unknown'),
-                    datasets: [{
-                        data: bandData.map(d => d.count),
-                        backgroundColor: bandData.map(d => colors[d.band] || '#3f3f46'),
-                        borderWidth: 0
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { position: 'right' } }
-                }
+                // Last test time (most recent first)
+                return new Date(b.last_test) - new Date(a.last_test);
             });
-        }
-
-        function updateProblemDevices(devices) {
-            const tbody = document.querySelector('#problemTable tbody');
-            if (!devices || devices.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="3" class="empty-state" style="padding: 20px;">No problem devices</td></tr>';
-                return;
-            }
-            tbody.innerHTML = devices.slice(0, 10).map(d => `
-                <tr>
-                    <td style="font-family: monospace; font-size: 0.8125rem;">${d.device_id.slice(0, 8)}...</td>
-                    <td style="color: ${d.avg_jitter > 30 ? 'var(--destructive)' : 'var(--warning)'};">${d.avg_jitter} ms</td>
-                    <td style="color: ${d.avg_packet_loss > 1 ? 'var(--destructive)' : 'var(--muted-foreground)'};">${d.avg_packet_loss}%</td>
-                </tr>
-            `).join('');
-        }
-
-        function updateSSIDTable(ssids) {
-            const tbody = document.querySelector('#ssidTable tbody');
-            if (!ssids || ssids.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No network data</td></tr>';
-                return;
-            }
-            tbody.innerHTML = ssids.map(s => `
-                <tr>
-                    <td style="font-weight: 500;">${s.ssid || 'Unknown'}</td>
-                    <td>${s.device_count}</td>
-                    <td>${s.test_count}</td>
-                    <td>${s.avg_download} Mbps</td>
-                    <td>${s.avg_upload} Mbps</td>
-                    <td>${s.avg_rssi} dBm</td>
-                </tr>
-            `).join('');
         }
 
         function filterDevices() {
             const vpnFilter = document.getElementById('filterVPN').value;
             const search = document.getElementById('searchDevice').value.toLowerCase();
-            const grid = document.getElementById('devicesGrid');
 
             let filtered = allDevices;
-            if (vpnFilter) filtered = filtered.filter(d => d.vpn_status === vpnFilter);
-            if (search) filtered = filtered.filter(d => (d.device_id + d.hostname + (d.user_email || '')).toLowerCase().includes(search));
+            if (vpnFilter) {
+                filtered = filtered.filter(d => d.vpn_status === vpnFilter);
+            }
+            if (search) {
+                filtered = filtered.filter(d =>
+                    (d.user_email || '').toLowerCase().includes(search) ||
+                    d.device_id.toLowerCase().includes(search) ||
+                    (d.hostname || '').toLowerCase().includes(search)
+                );
+            }
 
-            if (filtered.length === 0) {
-                grid.innerHTML = '<div class="empty-state">No devices match filters</div>';
+            document.getElementById('deviceCount').textContent = `(${filtered.length})`;
+            renderDeviceTable(filtered);
+        }
+
+        function renderDeviceTable(devices) {
+            const container = document.getElementById('deviceTableContainer');
+
+            if (devices.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+                        <p>No devices match your filters</p>
+                    </div>
+                `;
                 return;
             }
 
-            grid.innerHTML = filtered.map(device => {
-                const lastTest = new Date(device.last_test);
-                const hoursSince = (Date.now() - lastTest) / (1000 * 60 * 60);
-                const isOnline = hoursSince < 1;
-                const isProblem = device.avg_jitter > 20;
-                const isVPN = device.vpn_status === 'connected';
-                const displayName = device.user_email || device.device_id.slice(0, 12) + '...';
-                const initials = device.user_email ? device.user_email.slice(0, 2).toUpperCase() : device.device_id.slice(0, 2).toUpperCase();
+            const now = Date.now();
 
-                return `
-                    <div class="device-card ${isVPN ? 'vpn' : ''} ${isProblem ? 'problem' : ''}">
-                        <div class="device-info">
-                            <div class="device-avatar">${initials}</div>
-                            <div class="device-meta">
-                                <h3>
-                                    <span class="status-dot ${isOnline ? 'online' : 'offline'}"></span>
-                                    ${displayName}
-                                    ${isVPN ? `<span class="vpn-badge">${device.vpn_name}</span>` : ''}
-                                </h3>
-                                <p>${device.hostname || 'Unknown'} • v${device.app_version || '?'} • ${device.test_count} tests</p>
-                            </div>
-                        </div>
-                        <div class="device-stats">
-                            <div class="device-speed">↓${device.avg_download}</div>
-                            <div class="device-jitter">${device.avg_jitter}ms jitter</div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
+            container.innerHTML = `
+                <table class="device-table">
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>VPN</th>
+                            <th>Download</th>
+                            <th>Jitter</th>
+                            <th>Last Seen</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${devices.map(d => {
+                            const lastTest = new Date(d.last_test).getTime();
+                            const hoursSince = (now - lastTest) / (1000 * 60 * 60);
+                            const isOnline = hoursSince < 1;
+                            const isProblem = d.avg_jitter > 20;
+
+                            const displayName = d.user_email || d.device_id.slice(0, 12) + '...';
+                            const hostname = d.hostname || 'Unknown device';
+                            const lastSeen = getRelativeTime(d.last_test);
+
+                            const speedClass = d.avg_download >= 100 ? 'good' : d.avg_download >= 50 ? '' : 'warning';
+                            const jitterClass = d.avg_jitter <= 10 ? 'good' : d.avg_jitter <= 20 ? 'warning' : 'bad';
+                            const statusClass = isProblem ? 'problem' : (isOnline ? 'online' : 'offline');
+
+                            return `
+                                <tr onclick="openPanel('${d.device_id}')">
+                                    <td>
+                                        <div class="device-user">
+                                            <div class="device-status ${statusClass}"></div>
+                                            <div>
+                                                <div class="device-email">${displayName}</div>
+                                                <div class="device-hostname">${hostname}</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="vpn-badge ${d.vpn_status === 'connected' ? 'connected' : 'disconnected'}">
+                                            ${d.vpn_status === 'connected' ? d.vpn_name || 'VPN' : 'No VPN'}
+                                        </span>
+                                    </td>
+                                    <td><span class="speed-value ${speedClass}">${Math.round(d.avg_download)}</span> Mbps</td>
+                                    <td><span class="jitter-value ${jitterClass}">${d.avg_jitter}</span>ms</td>
+                                    <td class="last-seen">${lastSeen}</td>
+                                    <td>
+                                        <svg class="arrow-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
         }
 
-        async function loadHistoricalTrends() {
-            const days = document.getElementById('trendDays').value;
+        async function openPanel(deviceId) {
+            const device = allDevices.find(d => d.device_id === deviceId);
+            if (!device) return;
+
+            document.getElementById('panelOverlay').classList.add('open');
+            document.getElementById('detailPanel').classList.add('open');
+
+            const displayName = device.user_email || device.device_id.slice(0, 12) + '...';
+            document.getElementById('panelTitle').textContent = displayName;
+
+            // Show loading state
+            const content = document.getElementById('panelContent');
+            content.innerHTML = '<div class="loading">Loading device details...</div>';
+
+            // Fetch device history
             try {
-                const response = await fetch(`/api/stats/trends?days=${days}`);
-                const data = await response.json();
-                updateHistoricalChart(data.trends);
-                updateTrendSummary(data.summary);
+                const response = await fetch(`/api/devices/${deviceId}/history?limit=10`);
+                const history = await response.json();
+
+                renderPanelContent(device, history);
             } catch (err) {
-                console.error('Failed to load trends:', err);
+                renderPanelContent(device, []);
             }
         }
 
-        function updateHistoricalChart(trends) {
-            const ctx = document.getElementById('historicalChart').getContext('2d');
-            if (historicalChart) historicalChart.destroy();
+        function renderPanelContent(device, history) {
+            const content = document.getElementById('panelContent');
+            const now = Date.now();
+            const lastTest = new Date(device.last_test).getTime();
+            const isOnline = (now - lastTest) < 60 * 60 * 1000;
 
-            historicalChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: trends.map(t => t.date),
-                    datasets: [
-                        {
-                            label: 'Download',
-                            data: trends.map(t => t.avg_download),
-                            borderColor: '#3b82f6',
-                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                            fill: true,
-                            tension: 0.3,
-                            borderWidth: 2
-                        },
-                        {
-                            label: 'Upload',
-                            data: trends.map(t => t.avg_upload),
-                            borderColor: '#22c55e',
-                            backgroundColor: 'rgba(34, 197, 94, 0.1)',
-                            fill: true,
-                            tension: 0.3,
-                            borderWidth: 2
-                        },
-                        {
-                            label: 'Active Devices',
-                            data: trends.map(t => t.active_devices),
-                            borderColor: '#f59e0b',
-                            borderDash: [5, 5],
-                            fill: false,
-                            yAxisID: 'y1',
-                            borderWidth: 2
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { position: 'top', align: 'end' }
-                    },
-                    scales: {
-                        x: { grid: { display: false }, ticks: { maxTicksLimit: 10 } },
-                        y: { grid: { color: '#27272a' }, title: { display: true, text: 'Mbps' } },
-                        y1: { position: 'right', grid: { display: false }, title: { display: true, text: 'Devices' } }
-                    }
-                }
-            });
-        }
-
-        function updateTrendSummary(summary) {
-            const el = document.getElementById('trendSummary');
-            const trendClass = summary.trend_direction === 'improving' ? 'trend-up' : summary.trend_direction === 'declining' ? 'trend-down' : 'trend-stable';
-            const trendIcon = summary.trend_direction === 'improving' ? '↑' : summary.trend_direction === 'declining' ? '↓' : '→';
-            el.innerHTML = `
-                <div class="trend-item">
-                    <span class="value ${trendClass}">${trendIcon} ${summary.week_over_week_change}%</span>
-                    <span class="label">week-over-week</span>
+            content.innerHTML = `
+                <div class="panel-section">
+                    <div class="panel-section-title">Status</div>
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <div class="info-label">Status</div>
+                            <div class="info-value" style="color: ${isOnline ? 'var(--success)' : 'var(--muted-foreground)'}">
+                                ${isOnline ? 'Online' : 'Offline'}
+                            </div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">VPN</div>
+                            <div class="info-value" style="color: ${device.vpn_status === 'connected' ? 'var(--success)' : 'var(--muted-foreground)'}">
+                                ${device.vpn_status === 'connected' ? device.vpn_name : 'Disconnected'}
+                            </div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Download</div>
+                            <div class="info-value">${Math.round(device.avg_download)} Mbps</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Upload</div>
+                            <div class="info-value">${Math.round(device.avg_upload)} Mbps</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Latency</div>
+                            <div class="info-value">${Math.round(device.avg_latency || 0)}ms</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Jitter</div>
+                            <div class="info-value" style="color: ${device.avg_jitter > 20 ? 'var(--destructive)' : 'var(--foreground)'}">
+                                ${device.avg_jitter}ms
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="trend-item">
-                    <span class="value">${summary.total_data_points}</span>
-                    <span class="label">data points</span>
+
+                <div class="panel-section">
+                    <div class="panel-section-title">Device Info</div>
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <div class="info-label">Hostname</div>
+                            <div class="info-value">${device.hostname || 'Unknown'}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">App Version</div>
+                            <div class="info-value">v${device.app_version || '?'}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Total Tests</div>
+                            <div class="info-value">${device.test_count}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Last Seen</div>
+                            <div class="info-value">${getRelativeTime(device.last_test)}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <div class="panel-section-title">Recent Tests</div>
+                    <div class="test-history">
+                        ${history.length === 0 ?
+                            '<div class="empty-state" style="padding: 20px;">No recent tests available</div>' :
+                            history.map(t => {
+                                const time = new Date(t.timestamp_utc).toLocaleTimeString();
+                                return `
+                                    <div class="test-row">
+                                        <span class="test-time">${time}</span>
+                                        <div class="test-speeds">
+                                            <span>↓${Math.round(t.download_mbps)}</span>
+                                            <span>↑${Math.round(t.upload_mbps)}</span>
+                                            <span>${Math.round(t.latency_ms)}ms</span>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')
+                        }
+                    </div>
                 </div>
             `;
         }
 
-        async function loadISPStats() {
-            try {
-                const response = await fetch('/api/stats/isp');
-                const data = await response.json();
-                updateISPChart(data.byISP);
-            } catch (err) {
-                console.error('Failed to load ISP stats:', err);
-            }
+        function closePanel() {
+            document.getElementById('panelOverlay').classList.remove('open');
+            document.getElementById('detailPanel').classList.remove('open');
         }
 
-        function updateISPChart(ispData) {
-            const ctx = document.getElementById('ispChart').getContext('2d');
-            if (ispChart) ispChart.destroy();
+        function getRelativeTime(timestamp) {
+            const now = Date.now();
+            const then = new Date(timestamp).getTime();
+            const diff = now - then;
 
-            if (!ispData || ispData.length === 0) {
-                ctx.font = '14px Inter, sans-serif';
-                ctx.fillStyle = '#71717a';
-                ctx.fillText('No ISP data available yet', 50, 100);
-                return;
-            }
+            const minutes = Math.floor(diff / 60000);
+            const hours = Math.floor(diff / 3600000);
+            const days = Math.floor(diff / 86400000);
 
-            ispChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: ispData.slice(0, 8).map(i => i.isp_name.substring(0, 15)),
-                    datasets: [{
-                        label: 'Avg Download (Mbps)',
-                        data: ispData.slice(0, 8).map(i => parseFloat(i.avg_download)),
-                        backgroundColor: '#3b82f6',
-                        borderWidth: 0,
-                        borderRadius: 4
-                    }]
-                },
-                options: {
-                    indexAxis: 'y',
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        x: { grid: { color: '#27272a' } },
-                        y: { grid: { display: false } }
-                    }
-                }
-            });
+            if (minutes < 1) return 'Just now';
+            if (minutes < 60) return `${minutes}m ago`;
+            if (hours < 24) return `${hours}h ago`;
+            return `${days}d ago`;
         }
 
-        async function loadWiFiRecommendations() {
-            try {
-                const response = await fetch('/api/recommendations/wifi');
-                const recs = await response.json();
-                const el = document.getElementById('wifiRecommendations');
+        // Keyboard support
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closePanel();
+        });
 
-                if (!recs || recs.length === 0) {
-                    el.innerHTML = `
-                        <div class="empty-state" style="padding: 20px;">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 12px; opacity: 0.5;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                            <p>No issues detected</p>
-                        </div>
-                    `;
-                    return;
-                }
-
-                el.innerHTML = recs.map(r => `
-                    <div class="recommendation-item ${r.severity}">
-                        <div class="recommendation-title">${r.icon || ''} ${r.message}</div>
-                        <div class="recommendation-desc">${r.suggestion}</div>
-                    </div>
-                `).join('');
-            } catch (err) {
-                document.getElementById('wifiRecommendations').innerHTML = '<div class="empty-state">Failed to load</div>';
-            }
-        }
-
-        async function loadAlerts() {
-            try {
-                const response = await fetch('/api/alerts/history?limit=20');
-                const alerts = await response.json();
-                const el = document.getElementById('alertsList');
-
-                if (!alerts || alerts.length === 0) {
-                    el.innerHTML = `
-                        <div class="empty-state" style="padding: 20px;">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 12px; opacity: 0.5;"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
-                            <p>No recent alerts</p>
-                        </div>
-                    `;
-                    return;
-                }
-
-                el.innerHTML = alerts.map(a => {
-                    const time = new Date(a.triggered_at).toLocaleString();
-                    return `
-                        <div class="alert-item">
-                            <div class="alert-content">
-                                <div class="alert-type">${a.alert_type}</div>
-                                <div class="alert-message">${a.device_id.slice(0, 12)}... - ${a.message?.slice(0, 50) || ''}</div>
-                            </div>
-                            <div class="alert-time">${time}</div>
-                        </div>
-                    `;
-                }).join('');
-            } catch (err) {
-                document.getElementById('alertsList').innerHTML = '<div class="empty-state">No alerts configured</div>';
-            }
-        }
-
-        async function loadTimeOfDay() {
-            try {
-                const response = await fetch('/api/stats/timeofday?days=30');
-                const data = await response.json();
-                renderTimeOfDayGrid(data.heatmap);
-            } catch (err) {
-                console.error('Failed to load time of day:', err);
-            }
-        }
-
-        function renderTimeOfDayGrid(heatmap) {
-            const el = document.getElementById('timeOfDayGrid');
-            if (!heatmap || heatmap.length === 0) {
-                el.innerHTML = '<div style="grid-column: span 24; text-align: center; padding: 20px; color: var(--muted-foreground);">No data available</div>';
-                return;
-            }
-
-            let maxDown = 0;
-            heatmap.forEach(day => day.forEach(h => { if (h && h.download > maxDown) maxDown = h.download; }));
-
-            const avgByHour = [];
-            for (let h = 0; h < 24; h++) {
-                let sum = 0, count = 0;
-                heatmap.forEach(day => {
-                    if (day[h] && day[h].download) { sum += day[h].download; count++; }
-                });
-                avgByHour[h] = count > 0 ? sum / count : 0;
-            }
-
-            el.innerHTML = avgByHour.map((speed, hour) => {
-                const intensity = maxDown > 0 ? speed / maxDown : 0;
-                const bgColor = `rgba(59, 130, 246, ${0.15 + intensity * 0.85})`;
-                const textColor = intensity > 0.4 ? '#fff' : '#71717a';
-                return `
-                    <div class="heatmap-cell" style="background: ${bgColor}; color: ${textColor};" title="Hour ${hour}: ${speed.toFixed(0)} Mbps">
-                        ${hour}
-                    </div>
-                `;
-            }).join('');
-        }
-
-        async function loadLinkQualityCorrelation() {
-            try {
-                const response = await fetch('/api/stats/link-quality-correlation?days=7');
-                const data = await response.json();
-
-                // Update outlier count badge
-                document.getElementById('outlierCount').textContent =
-                    (data.outliers?.count || 0) + ' outliers';
-
-                // Build scatter chart
-                const ctx = document.getElementById('scatterChart').getContext('2d');
-                const scatterData = data.scatter_data || [];
-
-                if (scatterChart) scatterChart.destroy();
-
-                scatterChart = new Chart(ctx, {
-                    type: 'scatter',
-                    data: {
-                        datasets: [{
-                            label: 'Signal vs Speed',
-                            data: scatterData.map(d => ({
-                                x: d.rssi,
-                                y: d.download,
-                                mcs: d.mcs
-                            })),
-                            backgroundColor: scatterData.map(d => {
-                                // Color by MCS: low MCS = warning, high MCS = good
-                                if (d.mcs < 0) return 'rgba(161, 161, 170, 0.5)';
-                                if (d.mcs < 5) return 'rgba(245, 158, 11, 0.6)';
-                                return 'rgba(59, 130, 246, 0.6)';
-                            }),
-                            pointRadius: 4,
-                            pointHoverRadius: 6
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: {
-                                callbacks: {
-                                    label: (ctx) => {
-                                        const d = ctx.raw;
-                                        return `RSSI: ${d.x}dBm, Speed: ${d.y.toFixed(0)}Mbps, MCS: ${d.mcs >= 0 ? d.mcs : 'N/A'}`;
-                                    }
-                                }
-                            }
-                        },
-                        scales: {
-                            x: {
-                                title: { display: true, text: 'RSSI (dBm)' },
-                                min: -90,
-                                max: -30,
-                                reverse: true,
-                                grid: { color: '#27272a' }
-                            },
-                            y: {
-                                title: { display: true, text: 'Download (Mbps)' },
-                                min: 0,
-                                grid: { color: '#27272a' }
-                            }
-                        }
-                    }
-                });
-
-                // Build insights
-                const insightsEl = document.getElementById('scatterInsights');
-                let html = '';
-
-                if (data.outliers?.count > 0) {
-                    html += `
-                        <div style="padding: 10px; background: rgba(245, 158, 11, 0.1); border-left: 3px solid var(--warning); border-radius: 4px; margin-bottom: 12px;">
-                            <div style="font-weight: 500; margin-bottom: 4px;">⚠️ ${data.outliers.count} devices with signal issues</div>
-                            <div style="font-size: 0.75rem; color: var(--muted-foreground);">Good signal (>-60dBm) but slow speeds (<30Mbps)</div>
-                        </div>
-                    `;
-                }
-
-                if (data.rssi_buckets && data.rssi_buckets.length > 0) {
-                    html += '<div style="font-size: 0.75rem; color: var(--muted-foreground); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em;">By Signal Strength</div>';
-                    html += '<div style="display: flex; flex-direction: column; gap: 6px;">';
-                    data.rssi_buckets.forEach(b => {
-                        const barWidth = Math.min(100, (parseFloat(b.avg_download) / 100) * 100);
-                        html += `
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <span style="width: 80px; font-size: 0.75rem; color: var(--muted-foreground);">${b.rssi_range}</span>
-                                <div style="flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden;">
-                                    <div style="width: ${barWidth}%; height: 100%; background: var(--info);"></div>
-                                </div>
-                                <span style="font-size: 0.75rem; font-weight: 500;">${b.avg_download} Mbps</span>
-                            </div>
-                        `;
-                    });
-                    html += '</div>';
-                }
-
-                if (html === '') {
-                    html = '<p style="color: var(--muted-foreground);">Insufficient data for correlation analysis</p>';
-                }
-
-                insightsEl.innerHTML = html;
-
-            } catch (err) {
-                console.error('Link quality correlation error:', err);
-                document.getElementById('scatterInsights').innerHTML =
-                    '<p style="color: var(--muted-foreground);">Failed to load correlation data</p>';
-            }
-        }
-
+        // Load data on start
         loadAllData();
+
+        // Auto-refresh every 30 seconds
         setInterval(loadAllData, 30000);
     </script>
 </body>
