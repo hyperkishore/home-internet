@@ -1,6 +1,6 @@
 {
   "name": "nkspeedtest",
-  "version": "1.0.1",
+  "version": "3.0.0",
   "description": "Internet speed monitoring CLI with central dashboard for organizations",
   "bin": {
     "nkspeedtest": "./bin/nkspeedtest"

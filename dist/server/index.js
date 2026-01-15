@@ -4,6 +4,8 @@ const cors = require('cors');
 const path = require('path');
 const rateLimit = require('express-rate-limit');
 
+const APP_VERSION = '3.0.0';
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -365,6 +367,17 @@ app.post('/api/results', (req, res) => {
     console.error('Error inserting result:', err);
     res.status(500).json({ error: 'Failed to save result' });
   }
+});
+
+// API: Get version info
+app.get('/api/version', (req, res) => {
+  res.json({
+    version: APP_VERSION,
+    components: {
+      server: APP_VERSION,
+      min_client: '3.0.0'
+    }
+  });
 });
 
 // API: Get all results (with pagination)

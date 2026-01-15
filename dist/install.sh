@@ -1,5 +1,5 @@
 #!/bin/bash
-# Speed Monitor v2.1.0 - One-line installer for employees
+# Speed Monitor v3.0.0 - One-line installer for employees
 # Usage: curl -fsSL https://raw.githubusercontent.com/hyperkishore/home-internet/main/dist/install.sh | bash
 
 set -e
@@ -10,7 +10,7 @@ CONFIG_DIR="$HOME/.config/nkspeedtest"
 BIN_DIR="$HOME/.local/bin"
 PLIST_NAME="com.speedmonitor.plist"
 
-echo "=== Speed Monitor v2.1.0 Installer ==="
+echo "=== Speed Monitor v3.0.0 Installer ==="
 echo ""
 
 # Create directories

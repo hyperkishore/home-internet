@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# Speed Monitor v3.1 - SwiftBar Plugin with Auto-Update
+# Speed Monitor v3.0.0 - SwiftBar Plugin with Auto-Update
 # <swiftbar.hideAbout>true</swiftbar.hideAbout>
 # <swiftbar.hideRunInTerminal>true</swiftbar.hideRunInTerminal>
 # <swiftbar.hideLastUpdated>false</swiftbar.hideLastUpdated>
 # <swiftbar.hideDisablePlugin>true</swiftbar.hideDisablePlugin>
 # <swiftbar.hideSwiftBar>true</swiftbar.hideSwiftBar>
 
-PLUGIN_VERSION="3.3"
+APP_VERSION="3.0.0"
 
 # Configuration
 SERVER_URL="${SPEED_MONITOR_SERVER:-https://home-internet-production.up.railway.app}"
@@ -16,8 +16,7 @@ SPEED_MONITOR="$HOME/.local/bin/speed_monitor.sh"
 DEVICE_ID_FILE="$HOME/.config/nkspeedtest/device_id"
 CONFIG_DIR="$HOME/.config/nkspeedtest"
 UPDATE_CHECK_FILE="$CONFIG_DIR/last_update_check"
-PLUGIN_PATH="$HOME/Library/Application Support/SwiftBar/Plugins/nkspeedtest.5m.sh"
-GITHUB_RAW_URL="https://raw.githubusercontent.com/hyperkishore/home-internet/main/swiftbar-plugin.sh"
+GITHUB_BASE="https://raw.githubusercontent.com/hyperkishore/home-internet/main"
 
 # Ensure config directory exists
 mkdir -p "$CONFIG_DIR"
@@ -31,6 +30,12 @@ fi
 # Function to format numbers
 format_num() {
     printf "%.1f" "$1" 2>/dev/null || echo "--"
+}
+
+# Semantic version comparison (returns 0 if v1 >= v2)
+version_gte() {
+    local v1=$1 v2=$2
+    [[ "$(printf '%s\n' "$v1" "$v2" | sort -V | head -n1)" == "$v2" ]]
 }
 
 # Function to check for updates (runs once per hour)
@@ -51,60 +56,33 @@ check_for_updates() {
     # Record this check
     echo "$now" > "$UPDATE_CHECK_FILE"
 
-    # Fetch remote version
-    local remote_script=$(curl -s --max-time 5 "$GITHUB_RAW_URL" 2>/dev/null)
-    if [[ -z "$remote_script" ]]; then
+    # Fetch remote version from VERSION file
+    local remote_version=$(curl -s --max-time 5 "$GITHUB_BASE/VERSION" 2>/dev/null | tr -d '[:space:]')
+    if [[ -z "$remote_version" ]]; then
         return 1  # Can't reach GitHub
     fi
 
-    # Extract remote version
-    local remote_version=$(echo "$remote_script" | grep '^PLUGIN_VERSION=' | cut -d'"' -f2)
-    if [[ -z "$remote_version" ]]; then
-        return 1  # Can't parse version
+    # Semantic version comparison
+    if version_gte "$APP_VERSION" "$remote_version"; then
+        # Already on latest or newer
+        rm -f "$CONFIG_DIR/available_update" 2>/dev/null
+        return 1
     fi
 
-    # Compare versions (simple string comparison works for x.y format)
-    if [[ "$remote_version" != "$PLUGIN_VERSION" ]]; then
-        # Newer version available - store for display
-        echo "$remote_version" > "$CONFIG_DIR/available_update"
-        return 0
-    fi
-
-    # No update needed, clear any pending update notice
-    rm -f "$CONFIG_DIR/available_update" 2>/dev/null
-    return 1
+    # Newer version available - store for display
+    echo "$remote_version" > "$CONFIG_DIR/available_update"
+    return 0
 }
 
-# Function to perform self-update
-self_update() {
-    local remote_script=$(curl -s --max-time 10 "$GITHUB_RAW_URL" 2>/dev/null)
-    if [[ -z "$remote_script" ]]; then
-        echo "Failed to download update"
-        exit 1
-    fi
-
-    # Verify it looks like a valid script
-    if ! echo "$remote_script" | head -1 | grep -q "#!/bin/bash"; then
-        echo "Invalid update file"
-        exit 1
-    fi
-
-    # Backup current plugin
-    cp "$PLUGIN_PATH" "$PLUGIN_PATH.backup" 2>/dev/null
-
-    # Write new plugin
-    echo "$remote_script" > "$PLUGIN_PATH"
-    chmod +x "$PLUGIN_PATH"
-
-    # Clear update notice
-    rm -f "$CONFIG_DIR/available_update" 2>/dev/null
-
-    echo "Updated to latest version. Please refresh SwiftBar."
-}
-
-# Handle update command
+# Handle update command - delegate to speed_monitor.sh
 if [[ "$1" == "update" ]]; then
-    self_update
+    # Use speed_monitor.sh --update for unified update handling
+    if [[ -x "$SPEED_MONITOR" ]]; then
+        "$SPEED_MONITOR" --update
+    else
+        echo "Error: speed_monitor.sh not found at $SPEED_MONITOR"
+        exit 1
+    fi
     exit 0
 fi
 
@@ -170,11 +148,11 @@ if [[ -n "$SERVER_DATA" ]] && echo "$SERVER_DATA" | grep -q "avg_download"; then
         # Show update notice at top if available
         if [[ -n "$UPDATE_AVAILABLE" ]]; then
             echo "🔄 Update Available: v$UPDATE_AVAILABLE | color=#ff9500"
-            echo "Install Update | bash='$PLUGIN_PATH' param1=update terminal=false refresh=true sfimage=arrow.down.circle.fill color=#ff9500"
+            echo "Install Update | bash='$SPEED_MONITOR' param1=--update terminal=false refresh=true sfimage=arrow.down.circle.fill color=#ff9500"
             echo "---"
         fi
 
-        echo "Speed Monitor v$PLUGIN_VERSION | size=14"
+        echo "Speed Monitor v$APP_VERSION | size=14"
         echo "---"
         echo "📊 Performance (Avg) | size=12 color=#888888"
         echo "Download: ${DOWN_DISPLAY} Mbps | sfimage=arrow.down.circle"
@@ -253,11 +231,11 @@ else
                 # Show update notice at top if available
                 if [[ -n "$UPDATE_AVAILABLE" ]]; then
                     echo "🔄 Update Available: v$UPDATE_AVAILABLE | color=#ff9500"
-                    echo "Install Update | bash='$PLUGIN_PATH' param1=update terminal=false refresh=true sfimage=arrow.down.circle.fill color=#ff9500"
+                    echo "Install Update | bash='$SPEED_MONITOR' param1=--update terminal=false refresh=true sfimage=arrow.down.circle.fill color=#ff9500"
                     echo "---"
                 fi
 
-                echo "Speed Monitor v$PLUGIN_VERSION (Local) | size=14"
+                echo "Speed Monitor v$APP_VERSION (Local) | size=14"
                 echo "⚠️ Server unreachable - using local data | color=#ff9500 size=11"
                 echo "---"
                 echo "Download: $DOWNLOAD Mbps | sfimage=arrow.down.circle"
@@ -289,11 +267,11 @@ if [[ "$STATUS" != "ok" && "$STATUS" != "ok_local" ]]; then
     # Show update notice even in error state
     if [[ -n "$UPDATE_AVAILABLE" ]]; then
         echo "🔄 Update Available: v$UPDATE_AVAILABLE | color=#ff9500"
-        echo "Install Update | bash='$PLUGIN_PATH' param1=update terminal=false refresh=true sfimage=arrow.down.circle.fill color=#ff9500"
+        echo "Install Update | bash='$SPEED_MONITOR' param1=--update terminal=false refresh=true sfimage=arrow.down.circle.fill color=#ff9500"
         echo "---"
     fi
 
-    echo "Speed Monitor v$PLUGIN_VERSION | size=14"
+    echo "Speed Monitor v$APP_VERSION | size=14"
     echo "---"
 
     # Diagnostic info
@@ -336,5 +314,5 @@ if [[ "$STATUS" != "ok" && "$STATUS" != "ok_local" ]]; then
     [[ -n "$SERVER_URL" ]] && echo "Open Dashboard | href=$SERVER_URL sfimage=chart.line.uptrend.xyaxis"
     echo "---"
     echo "View Local Logs | bash=/usr/bin/tail param1=-20 param2=$CSV_FILE terminal=true sfimage=doc.text"
-    echo "Check for Updates | bash='$PLUGIN_PATH' param1=update terminal=false refresh=true sfimage=arrow.triangle.2.circlepath"
+    echo "Check for Updates | bash='$SPEED_MONITOR' param1=--update terminal=false refresh=true sfimage=arrow.triangle.2.circlepath"
 fi

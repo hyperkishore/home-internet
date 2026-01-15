@@ -1,14 +1,15 @@
 #!/bin/bash
 #
-# Speed Monitor v2.4.0 - Organization-Wide Internet Speed Monitoring
+# Speed Monitor v3.0.0 - Organization-Wide Internet Speed Monitoring
 # Enhanced data collection for fleet deployment (300+ devices)
+# v3.0.0: Unified versioning, self-update mechanism
 # v2.4.0: Added curl timeout to prevent process hangs
 # v2.3.0: Bug fixes - jitter percentiles, TCP retransmits delta, JSON escaping, status field
 # v2.2.0: Fixed VPN detection - now checks for active tunnel, not just process running
 # v2.1.0: Added WiFi debugging metrics (MCS, error rates, BSSID tracking)
 #
 
-VERSION="2.4.0"
+APP_VERSION="3.0.0"
 
 # Configuration
 DATA_DIR="$HOME/.local/share/nkspeedtest"
@@ -35,6 +36,145 @@ fi
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
 }
+
+# GitHub base URL for updates
+GITHUB_BASE="https://raw.githubusercontent.com/hyperkishore/home-internet/main"
+
+# Semantic version comparison (returns 0 if v1 >= v2)
+version_gte() {
+    local v1=$1 v2=$2
+    [[ "$(printf '%s\n' "$v1" "$v2" | sort -V | head -n1)" == "$v2" ]]
+}
+
+# Check for available updates (returns 0 if update available)
+check_update() {
+    local remote_version=$(curl -s --max-time 5 "$GITHUB_BASE/VERSION" 2>/dev/null | tr -d '[:space:]')
+    if [[ -z "$remote_version" ]]; then
+        return 1  # Can't reach server
+    fi
+
+    if version_gte "$APP_VERSION" "$remote_version"; then
+        return 1  # Already on latest
+    fi
+
+    echo "$remote_version"
+    return 0
+}
+
+# Self-update function
+update_app() {
+    echo "Speed Monitor Update"
+    echo "===================="
+    echo "Current version: $APP_VERSION"
+    echo ""
+
+    # Check remote version
+    echo "Checking for updates..."
+    local remote_version=$(curl -s --max-time 5 "$GITHUB_BASE/VERSION" 2>/dev/null | tr -d '[:space:]')
+    if [[ -z "$remote_version" ]]; then
+        echo "Failed to check for updates (network error)"
+        return 1
+    fi
+
+    echo "Latest version: $remote_version"
+
+    # Compare versions
+    if version_gte "$APP_VERSION" "$remote_version"; then
+        echo ""
+        echo "✓ Already on latest version ($APP_VERSION)"
+        return 0
+    fi
+
+    echo ""
+    echo "Updating from $APP_VERSION to $remote_version..."
+
+    # Download to temp files
+    local tmp_dir=$(mktemp -d)
+    trap "rm -rf '$tmp_dir'" EXIT
+
+    echo "Downloading speed_monitor.sh..."
+    if ! curl -s --max-time 30 "$GITHUB_BASE/speed_monitor.sh" -o "$tmp_dir/speed_monitor.sh"; then
+        echo "Failed to download speed_monitor.sh"
+        return 1
+    fi
+
+    echo "Downloading swiftbar-plugin.sh..."
+    if ! curl -s --max-time 30 "$GITHUB_BASE/swiftbar-plugin.sh" -o "$tmp_dir/swiftbar-plugin.sh"; then
+        echo "Failed to download swiftbar-plugin.sh"
+        return 1
+    fi
+
+    # Validate downloads
+    if ! head -1 "$tmp_dir/speed_monitor.sh" | grep -q "#!/bin/bash"; then
+        echo "Download validation failed for speed_monitor.sh"
+        return 1
+    fi
+
+    if ! head -1 "$tmp_dir/swiftbar-plugin.sh" | grep -q "#!/bin/bash"; then
+        echo "Download validation failed for swiftbar-plugin.sh"
+        return 1
+    fi
+
+    # Create timestamped backup
+    local backup_dir="$DATA_DIR/backups/$(date +%Y%m%d_%H%M%S)"
+    mkdir -p "$backup_dir"
+    echo "Backing up to $backup_dir..."
+    cp "$HOME/.local/bin/speed_monitor.sh" "$backup_dir/" 2>/dev/null
+    cp "$HOME/Library/Application Support/SwiftBar/Plugins/nkspeedtest.5m.sh" "$backup_dir/" 2>/dev/null
+
+    # Atomic install - speed_monitor.sh
+    echo "Installing speed_monitor.sh..."
+    mv "$tmp_dir/speed_monitor.sh" "$HOME/.local/bin/speed_monitor.sh"
+    chmod +x "$HOME/.local/bin/speed_monitor.sh"
+
+    # Atomic install - SwiftBar plugin (if SwiftBar is installed)
+    local swiftbar_plugin="$HOME/Library/Application Support/SwiftBar/Plugins/nkspeedtest.5m.sh"
+    if [[ -d "$HOME/Library/Application Support/SwiftBar/Plugins" ]]; then
+        echo "Installing SwiftBar plugin..."
+        mv "$tmp_dir/swiftbar-plugin.sh" "$swiftbar_plugin"
+        chmod +x "$swiftbar_plugin"
+    fi
+
+    echo ""
+    echo "✓ Updated to version $remote_version"
+    echo "  Backup saved to: $backup_dir"
+    return 0
+}
+
+# Handle command-line arguments
+case "${1:-}" in
+    --version|-v)
+        echo "Speed Monitor v$APP_VERSION"
+        exit 0
+        ;;
+    --update|-u)
+        update_app
+        exit $?
+        ;;
+    --check-update)
+        if new_version=$(check_update); then
+            echo "Update available: $new_version"
+            exit 0
+        else
+            echo "Up to date ($APP_VERSION)"
+            exit 1
+        fi
+        ;;
+    --help|-h)
+        echo "Speed Monitor v$APP_VERSION"
+        echo ""
+        echo "Usage: speed_monitor.sh [OPTIONS]"
+        echo ""
+        echo "Options:"
+        echo "  --version, -v     Show version"
+        echo "  --update, -u      Update to latest version"
+        echo "  --check-update    Check if update is available"
+        echo "  --help, -h        Show this help"
+        echo ""
+        echo "Without options, runs a speed test."
+        exit 0
+        ;;
+esac
 
 # Get stable device ID (persisted across reinstalls)
 get_device_id() {
@@ -453,7 +593,7 @@ build_json_payload() {
     json+="\"device_id\":\"$DEVICE_ID\","
     json+="\"user_email\":\"$user_email\","
     json+="\"os_version\":\"$OS_VERSION\","
-    json+="\"app_version\":\"$VERSION\","
+    json+="\"app_version\":\"$APP_VERSION\","
     json+="\"timezone\":\"$TIMEZONE\","
     json+="\"interface\":\"$INTERFACE\","
     json+="\"ssid\":\"$safe_ssid\","
@@ -496,7 +636,7 @@ collect_metrics() {
     local errors=""
     STATUS="pending"  # Initialize status
 
-    log "Starting speed test (v$VERSION)..."
+    log "Starting speed test (v$APP_VERSION)..."
 
     # Timestamp and device info
     TIMESTAMP_UTC=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -593,7 +733,7 @@ collect_metrics() {
     local csv_payload=$(echo "$raw_payload" | sed 's/"/\\"/g')
 
     # Append to CSV (v2.1 schema)
-    echo "$TIMESTAMP_UTC,$DEVICE_ID,$OS_VERSION,$VERSION,$TIMEZONE,$INTERFACE,$SSID,$BSSID,$BAND,$CHANNEL,$WIDTH_MHZ,$RSSI_DBM,$NOISE_DBM,$SNR_DB,$TX_RATE_MBPS,$MCS_INDEX,$SPATIAL_STREAMS,$LOCAL_IP,$PUBLIC_IP,$LATENCY_MS,$JITTER_MS,$JITTER_P50,$JITTER_P95,$PACKET_LOSS_PCT,$DOWNLOAD_MBPS,$UPLOAD_MBPS,$VPN_STATUS,$VPN_NAME,$INPUT_ERRORS,$OUTPUT_ERRORS,$INPUT_ERROR_RATE,$OUTPUT_ERROR_RATE,$TCP_RETRANSMITS,$BSSID_CHANGED,$ROAM_COUNT,$ERRORS,\"$csv_payload\"" >> "$CSV_FILE"
+    echo "$TIMESTAMP_UTC,$DEVICE_ID,$OS_VERSION,$APP_VERSION,$TIMEZONE,$INTERFACE,$SSID,$BSSID,$BAND,$CHANNEL,$WIDTH_MHZ,$RSSI_DBM,$NOISE_DBM,$SNR_DB,$TX_RATE_MBPS,$MCS_INDEX,$SPATIAL_STREAMS,$LOCAL_IP,$PUBLIC_IP,$LATENCY_MS,$JITTER_MS,$JITTER_P50,$JITTER_P95,$PACKET_LOSS_PCT,$DOWNLOAD_MBPS,$UPLOAD_MBPS,$VPN_STATUS,$VPN_NAME,$INPUT_ERRORS,$OUTPUT_ERRORS,$INPUT_ERROR_RATE,$OUTPUT_ERROR_RATE,$TCP_RETRANSMITS,$BSSID_CHANGED,$ROAM_COUNT,$ERRORS,\"$csv_payload\"" >> "$CSV_FILE"
 
     # Send to server if configured
     if [[ -n "$SERVER_URL" ]]; then
@@ -604,7 +744,7 @@ collect_metrics() {
     fi
 
     # Print summary
-    echo "=== Speed Test Results (v$VERSION) ==="
+    echo "=== Speed Test Results (v$APP_VERSION) ==="
     echo "Time: $TIMESTAMP_UTC"
     echo "Device: $DEVICE_ID"
     echo "OS: macOS $OS_VERSION"
