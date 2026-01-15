@@ -1,11 +1,12 @@
 #!/bin/bash
 #
-# Speed Monitor v2.1.0 - Organization-Wide Internet Speed Monitoring
+# Speed Monitor v2.2.0 - Organization-Wide Internet Speed Monitoring
 # Enhanced data collection for fleet deployment (300+ devices)
+# v2.2.0: Fixed VPN detection - now checks for active tunnel, not just process running
 # v2.1.0: Added WiFi debugging metrics (MCS, error rates, BSSID tracking)
 #
 
-VERSION="2.1.0"
+VERSION="2.2.0"
 
 # Configuration
 DATA_DIR="$HOME/.local/share/nkspeedtest"
@@ -98,45 +99,71 @@ get_wifi_details() {
 }
 
 # Detect VPN status
+# Note: Process running does NOT mean VPN is connected - must check for active tunnel
 detect_vpn() {
     local vpn_status="disconnected"
     local vpn_name="none"
 
-    # Zscaler Client Connector
+    # Helper: Check if any utun interface has an IPv4 address (active tunnel)
+    local has_active_tunnel=false
+    if ifconfig 2>/dev/null | grep -A2 "^utun" | grep -q "inet "; then
+        has_active_tunnel=true
+    fi
+
+    # Zscaler Client Connector - must have process AND active tunnel
     if pgrep -x "Zscaler" > /dev/null 2>&1 || pgrep -x "ZscalerTunnel" > /dev/null 2>&1; then
-        vpn_status="connected"
-        vpn_name="Zscaler"
-    # Cisco AnyConnect
+        if [[ "$has_active_tunnel" == "true" ]]; then
+            vpn_status="connected"
+            vpn_name="Zscaler"
+        else
+            vpn_name="Zscaler (app running, tunnel inactive)"
+        fi
+    # Cisco AnyConnect - check for vpnagentd AND tunnel
     elif pgrep -x "vpnagentd" > /dev/null 2>&1; then
-        vpn_status="connected"
-        vpn_name="Cisco AnyConnect"
+        if [[ "$has_active_tunnel" == "true" ]]; then
+            vpn_status="connected"
+            vpn_name="Cisco AnyConnect"
+        else
+            vpn_name="Cisco AnyConnect (inactive)"
+        fi
     # Palo Alto GlobalProtect
     elif pgrep -x "PanGPS" > /dev/null 2>&1 || pgrep -x "GlobalProtect" > /dev/null 2>&1; then
-        vpn_status="connected"
-        vpn_name="GlobalProtect"
+        if [[ "$has_active_tunnel" == "true" ]]; then
+            vpn_status="connected"
+            vpn_name="GlobalProtect"
+        else
+            vpn_name="GlobalProtect (inactive)"
+        fi
     # Fortinet FortiClient
     elif pgrep -x "FortiClient" > /dev/null 2>&1; then
-        vpn_status="connected"
-        vpn_name="FortiClient"
-    # OpenVPN
+        if [[ "$has_active_tunnel" == "true" ]]; then
+            vpn_status="connected"
+            vpn_name="FortiClient"
+        else
+            vpn_name="FortiClient (inactive)"
+        fi
+    # OpenVPN - process typically only runs when connected
     elif pgrep -x "openvpn" > /dev/null 2>&1; then
-        vpn_status="connected"
-        vpn_name="OpenVPN"
-    # Tunnelblick (OpenVPN GUI)
+        if [[ "$has_active_tunnel" == "true" ]]; then
+            vpn_status="connected"
+            vpn_name="OpenVPN"
+        fi
+    # Tunnelblick (OpenVPN GUI) - app can run without tunnel
     elif pgrep -x "Tunnelblick" > /dev/null 2>&1; then
-        vpn_status="connected"
-        vpn_name="Tunnelblick"
+        if [[ "$has_active_tunnel" == "true" ]]; then
+            vpn_status="connected"
+            vpn_name="Tunnelblick"
+        fi
     # WireGuard
     elif pgrep -x "wireguard-go" > /dev/null 2>&1; then
-        vpn_status="connected"
-        vpn_name="WireGuard"
-    # Generic: check for utun interfaces (VPN tunnels)
-    elif ifconfig 2>/dev/null | grep -q "^utun"; then
-        # Check if any utun interface has an IP
-        if ifconfig 2>/dev/null | grep -A1 "^utun" | grep -q "inet "; then
+        if [[ "$has_active_tunnel" == "true" ]]; then
             vpn_status="connected"
-            vpn_name="Unknown VPN"
+            vpn_name="WireGuard"
         fi
+    # Generic: unknown VPN with active tunnel
+    elif [[ "$has_active_tunnel" == "true" ]]; then
+        vpn_status="connected"
+        vpn_name="Unknown VPN"
     fi
 
     echo "VPN_STATUS=$vpn_status"
