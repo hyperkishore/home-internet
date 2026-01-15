@@ -546,8 +546,8 @@
                         <div class="stat-label">Upload Mbps</div>
                     </div>
                     <div class="stat-item">
-                        <div class="stat-value">${data.latest ? Math.round(data.latest.latency_ms) : '--'}</div>
-                        <div class="stat-label">Latency ms</div>
+                        <div class="stat-value">${data.health && data.health.median_jitter ? data.health.median_jitter.toFixed(1) : '--'}</div>
+                        <div class="stat-label">Jitter ms (median)</div>
                     </div>
                     <div class="stat-item">
                         <div class="stat-value">${data.latest && data.latest.vpn_status === 'connected' ? '\u2713' : '\u2717'}</div>
