@@ -36,6 +36,7 @@ db.exec(`
     -- Identity
     device_id TEXT NOT NULL,
     user_id TEXT,
+    user_email TEXT,
     hostname TEXT,
 
     -- Metadata
@@ -237,7 +238,7 @@ app.post('/api/results', (req, res) => {
   try {
     const stmt = db.prepare(`
       INSERT INTO speed_results (
-        device_id, user_id, hostname, timestamp_utc, os_version, app_version, timezone,
+        device_id, user_id, user_email, hostname, timestamp_utc, os_version, app_version, timezone,
         interface, local_ip, public_ip,
         ssid, bssid, band, channel, width_mhz, rssi_dbm, noise_dbm, snr_db, tx_rate_mbps,
         mcs_index, spatial_streams,
@@ -247,7 +248,7 @@ app.post('/api/results', (req, res) => {
         bssid_changed, roam_count,
         status, errors, raw_payload
       ) VALUES (
-        ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?,
         ?, ?, ?, ?, ?, ?, ?, ?, ?,
         ?, ?,
@@ -262,6 +263,7 @@ app.post('/api/results', (req, res) => {
     const result = stmt.run(
       data.device_id,
       data.user_id || data.device_id,
+      data.user_email || null,
       data.hostname || null,
       data.timestamp_utc || new Date().toISOString(),
       data.os_version || null,
@@ -386,6 +388,7 @@ app.get('/api/stats', (req, res) => {
     const perDevice = db.prepare(`
       SELECT
         device_id,
+        MAX(user_email) as user_email,
         MAX(hostname) as hostname,
         MAX(os_version) as os_version,
         MAX(app_version) as app_version,
@@ -582,6 +585,7 @@ app.get('/api/devices/:device_id/health', (req, res) => {
     const health = db.prepare(`
       SELECT
         device_id,
+        MAX(user_email) as user_email,
         MAX(hostname) as hostname,
         MAX(os_version) as os_version,
         MAX(app_version) as app_version,

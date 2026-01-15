@@ -46,6 +46,16 @@ get_device_id() {
     fi
 }
 
+# Get user email (set during installation)
+get_user_email() {
+    local email_file="$CONFIG_DIR/user_email"
+    if [[ -f "$email_file" ]]; then
+        cat "$email_file"
+    else
+        echo ""
+    fi
+}
+
 # Get WiFi details via CoreWLAN Swift helper
 get_wifi_details() {
     if [[ -x "$WIFI_HELPER" ]]; then
@@ -367,9 +377,11 @@ get_local_ip() {
 
 # Build JSON payload
 build_json_payload() {
+    local user_email=$(get_user_email)
     local json="{"
     json+="\"timestamp_utc\":\"$TIMESTAMP_UTC\","
     json+="\"device_id\":\"$DEVICE_ID\","
+    json+="\"user_email\":\"$user_email\","
     json+="\"os_version\":\"$OS_VERSION\","
     json+="\"app_version\":\"$VERSION\","
     json+="\"timezone\":\"$TIMEZONE\","

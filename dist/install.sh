@@ -1,19 +1,34 @@
 #!/bin/bash
-# Speed Monitor v2.0.0 - One-line installer for employees
+# Speed Monitor v2.1.0 - One-line installer for employees
 # Usage: curl -fsSL https://raw.githubusercontent.com/hyperkishore/home-internet/main/dist/install.sh | bash
 
 set -e
 
 SERVER_URL="https://home-internet-production.up.railway.app"
 SCRIPT_DIR="$HOME/.local/share/nkspeedtest"
+CONFIG_DIR="$HOME/.config/nkspeedtest"
 BIN_DIR="$HOME/.local/bin"
 PLIST_NAME="com.speedmonitor.plist"
 
-echo "=== Speed Monitor v2.0.0 Installer ==="
+echo "=== Speed Monitor v2.1.0 Installer ==="
 echo ""
 
 # Create directories
-mkdir -p "$SCRIPT_DIR" "$BIN_DIR"
+mkdir -p "$SCRIPT_DIR" "$BIN_DIR" "$CONFIG_DIR"
+
+# Collect user email
+echo "Please enter your Hyperverge email address:"
+read -p "Email: " USER_EMAIL
+
+# Validate email format (basic check)
+if [[ ! "$USER_EMAIL" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+    echo "Warning: Email format looks invalid, but continuing anyway..."
+fi
+
+# Store email
+echo "$USER_EMAIL" > "$CONFIG_DIR/user_email"
+echo "Email saved: $USER_EMAIL"
+echo ""
 
 # Check for Homebrew
 if ! command -v brew &> /dev/null; then

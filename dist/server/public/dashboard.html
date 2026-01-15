@@ -1180,7 +1180,7 @@
 
             let filtered = allDevices;
             if (vpnFilter) filtered = filtered.filter(d => d.vpn_status === vpnFilter);
-            if (search) filtered = filtered.filter(d => (d.device_id + d.hostname).toLowerCase().includes(search));
+            if (search) filtered = filtered.filter(d => (d.device_id + d.hostname + (d.user_email || '')).toLowerCase().includes(search));
 
             if (filtered.length === 0) {
                 grid.innerHTML = '<div class="empty-state">No devices match filters</div>';
@@ -1193,7 +1193,8 @@
                 const isOnline = hoursSince < 1;
                 const isProblem = device.avg_jitter > 20;
                 const isVPN = device.vpn_status === 'connected';
-                const initials = device.device_id.slice(0, 2).toUpperCase();
+                const displayName = device.user_email || device.device_id.slice(0, 12) + '...';
+                const initials = device.user_email ? device.user_email.slice(0, 2).toUpperCase() : device.device_id.slice(0, 2).toUpperCase();
 
                 return `
                     <div class="device-card ${isVPN ? 'vpn' : ''} ${isProblem ? 'problem' : ''}">
@@ -1202,7 +1203,7 @@
                             <div class="device-meta">
                                 <h3>
                                     <span class="status-dot ${isOnline ? 'online' : 'offline'}"></span>
-                                    ${device.device_id.slice(0, 12)}...
+                                    ${displayName}
                                     ${isVPN ? `<span class="vpn-badge">${device.vpn_name}</span>` : ''}
                                 </h3>
                                 <p>${device.hostname || 'Unknown'} • v${device.app_version || '?'} • ${device.test_count} tests</p>
