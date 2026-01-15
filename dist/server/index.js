@@ -651,6 +651,37 @@ app.get('/api/devices/:device_id/history', (req, res) => {
   }
 });
 
+// API: Speed timeline (all devices, for chart)
+app.get('/api/stats/timeline', (req, res) => {
+  const hours = Math.min(parseInt(req.query.hours) || 24, 168); // Max 7 days
+
+  try {
+    const timeline = db.prepare(`
+      SELECT
+        timestamp_utc,
+        device_id,
+        user_email,
+        download_mbps,
+        upload_mbps,
+        latency_ms,
+        jitter_ms,
+        vpn_status,
+        vpn_name,
+        ssid,
+        rssi_dbm
+      FROM speed_results
+      WHERE status = 'success'
+        AND timestamp_utc > datetime('now', '-' || ? || ' hours')
+      ORDER BY timestamp_utc ASC
+    `).all(hours);
+
+    res.json(timeline);
+  } catch (err) {
+    console.error('Timeline error:', err);
+    res.status(500).json({ error: 'Failed to fetch timeline' });
+  }
+});
+
 // API: Get device's results
 app.get('/api/results/:device_id', (req, res) => {
   const { device_id } = req.params;

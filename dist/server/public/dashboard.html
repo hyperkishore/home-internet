@@ -7,6 +7,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <style>
         :root {
             --background: #09090b;
@@ -268,6 +270,49 @@
             font-weight: 400;
             color: var(--muted-foreground);
             margin-left: 4px;
+        }
+
+        /* Speed Chart */
+        .chart-section {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .chart-title {
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .chart-controls {
+            display: flex;
+            gap: 8px;
+        }
+
+        .chart-controls select {
+            background: var(--background);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 6px 12px;
+            font-size: 0.8125rem;
+            color: var(--foreground);
+            cursor: pointer;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 280px;
         }
 
         /* Device Fleet */
@@ -650,6 +695,28 @@
             </div>
         </div>
 
+        <!-- Speed Trends Chart -->
+        <div class="chart-section">
+            <div class="chart-header">
+                <div class="chart-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                    Speed Timeline
+                </div>
+                <div class="chart-controls">
+                    <select id="chartTimeRange" onchange="loadChartData()">
+                        <option value="6">Last 6 hours</option>
+                        <option value="12">Last 12 hours</option>
+                        <option value="24" selected>Last 24 hours</option>
+                        <option value="48">Last 2 days</option>
+                        <option value="168">Last 7 days</option>
+                    </select>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="speedChart"></canvas>
+            </div>
+        </div>
+
         <!-- Device Fleet -->
         <div class="fleet-section">
             <div class="fleet-header">
@@ -691,6 +758,168 @@
     <script>
         let allDevices = [];
         let deviceHistory = {};
+        let speedChart = null;
+
+        // Initialize Chart
+        function initChart() {
+            const ctx = document.getElementById('speedChart').getContext('2d');
+
+            speedChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [
+                        {
+                            label: 'Download',
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            pointBackgroundColor: '#3b82f6',
+                            tension: 0.3,
+                            fill: true,
+                            data: []
+                        },
+                        {
+                            label: 'Upload',
+                            borderColor: '#22c55e',
+                            backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            pointBackgroundColor: '#22c55e',
+                            tension: 0.3,
+                            fill: true,
+                            data: []
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            align: 'end',
+                            labels: {
+                                color: '#a1a1aa',
+                                usePointStyle: true,
+                                pointStyle: 'circle',
+                                padding: 20,
+                                font: { size: 12, family: 'Inter' }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: '#18181b',
+                            titleColor: '#fafafa',
+                            bodyColor: '#a1a1aa',
+                            borderColor: '#27272a',
+                            borderWidth: 1,
+                            padding: 12,
+                            displayColors: true,
+                            callbacks: {
+                                title: function(context) {
+                                    const point = context[0].raw;
+                                    return new Date(point.x).toLocaleString();
+                                },
+                                afterTitle: function(context) {
+                                    const point = context[0].raw;
+                                    if (point.user) {
+                                        return point.user;
+                                    }
+                                    return '';
+                                },
+                                label: function(context) {
+                                    return ` ${context.dataset.label}: ${context.parsed.y.toFixed(1)} Mbps`;
+                                },
+                                afterBody: function(context) {
+                                    const point = context[0].raw;
+                                    const lines = [];
+                                    if (point.latency) lines.push(`Latency: ${point.latency}ms`);
+                                    if (point.jitter) lines.push(`Jitter: ${point.jitter}ms`);
+                                    if (point.vpn) lines.push(`VPN: ${point.vpn}`);
+                                    if (point.ssid) lines.push(`WiFi: ${point.ssid}`);
+                                    return lines;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                displayFormats: {
+                                    hour: 'HH:mm',
+                                    day: 'MMM d'
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(39, 39, 42, 0.5)',
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: '#71717a',
+                                font: { size: 11 }
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(39, 39, 42, 0.5)',
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: '#71717a',
+                                font: { size: 11 },
+                                callback: function(value) {
+                                    return value + ' Mbps';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        async function loadChartData() {
+            const hours = document.getElementById('chartTimeRange').value;
+
+            try {
+                const response = await fetch(`/api/stats/timeline?hours=${hours}`);
+                const data = await response.json();
+
+                // Transform data for Chart.js
+                const downloadData = data.map(d => ({
+                    x: new Date(d.timestamp_utc),
+                    y: d.download_mbps,
+                    user: d.user_email || d.device_id.slice(0, 12) + '...',
+                    latency: Math.round(d.latency_ms),
+                    jitter: d.jitter_ms ? d.jitter_ms.toFixed(1) : null,
+                    vpn: d.vpn_status === 'connected' ? d.vpn_name : 'Disconnected',
+                    ssid: d.ssid
+                }));
+
+                const uploadData = data.map(d => ({
+                    x: new Date(d.timestamp_utc),
+                    y: d.upload_mbps,
+                    user: d.user_email || d.device_id.slice(0, 12) + '...',
+                    latency: Math.round(d.latency_ms),
+                    jitter: d.jitter_ms ? d.jitter_ms.toFixed(1) : null,
+                    vpn: d.vpn_status === 'connected' ? d.vpn_name : 'Disconnected',
+                    ssid: d.ssid
+                }));
+
+                speedChart.data.datasets[0].data = downloadData;
+                speedChart.data.datasets[1].data = uploadData;
+                speedChart.update();
+            } catch (err) {
+                console.error('Failed to load chart data:', err);
+            }
+        }
 
         async function loadAllData() {
             try {
@@ -1103,11 +1332,18 @@
             if (e.key === 'Escape') closePanel();
         });
 
+        // Initialize chart
+        initChart();
+
         // Load data on start
         loadAllData();
+        loadChartData();
 
         // Auto-refresh every 30 seconds
-        setInterval(loadAllData, 30000);
+        setInterval(() => {
+            loadAllData();
+            loadChartData();
+        }, 30000);
     </script>
 </body>
 </html>
