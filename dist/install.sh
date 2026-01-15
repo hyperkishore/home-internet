@@ -31,15 +31,6 @@ echo "$USER_EMAIL" > "$CONFIG_DIR/user_email"
 echo "Email saved: $USER_EMAIL"
 echo ""
 
-# Check for Xcode Command Line Tools (required for Swift compilation)
-if ! xcode-select -p &> /dev/null; then
-    echo "Installing Xcode Command Line Tools (required for Swift)..."
-    xcode-select --install
-    echo ""
-    echo "Please complete the Xcode CLT installation popup, then run this script again."
-    exit 1
-fi
-
 # Check for Homebrew
 if ! command -v brew &> /dev/null; then
     echo "Installing Homebrew..."
@@ -57,86 +48,34 @@ echo "Downloading speed monitor script..."
 curl -fsSL "https://raw.githubusercontent.com/hyperkishore/home-internet/main/speed_monitor.sh" -o "$BIN_DIR/speed_monitor.sh"
 chmod +x "$BIN_DIR/speed_monitor.sh"
 
-# Download wifi_info Swift helper (pre-compiled or compile if needed)
-echo "Setting up WiFi helper..."
-if [[ -f "/opt/homebrew/bin/wifi_info" ]]; then
-    ln -sf "/opt/homebrew/bin/wifi_info" "$BIN_DIR/wifi_info"
-else
-    # Download and compile
-    curl -fsSL "https://raw.githubusercontent.com/hyperkishore/home-internet/main/dist/src/wifi_info.swift" -o "$SCRIPT_DIR/wifi_info.swift"
-    swiftc -O -o "$BIN_DIR/wifi_info" "$SCRIPT_DIR/wifi_info.swift" -framework CoreWLAN -framework Foundation 2>/dev/null || echo "WiFi helper compilation skipped (will use fallback)"
+# Optional: wifi_info Swift helper (backup for SpeedMonitor.app)
+# Only compile if Xcode CLT is available - not required since SpeedMonitor.app is primary
+if command -v swiftc &> /dev/null; then
+    echo "Setting up WiFi helper (backup)..."
+    if [[ -f "/opt/homebrew/bin/wifi_info" ]]; then
+        ln -sf "/opt/homebrew/bin/wifi_info" "$BIN_DIR/wifi_info"
+    else
+        curl -fsSL "https://raw.githubusercontent.com/hyperkishore/home-internet/main/dist/src/wifi_info.swift" -o "$SCRIPT_DIR/wifi_info.swift" 2>/dev/null
+        swiftc -O -o "$BIN_DIR/wifi_info" "$SCRIPT_DIR/wifi_info.swift" -framework CoreWLAN -framework Foundation 2>/dev/null || true
+    fi
 fi
 
-# Build and install SpeedMonitor.app (native menu bar app with Location Services)
-echo "Building SpeedMonitor menu bar app..."
-SPEEDMONITOR_BUILD_TEMP=$(mktemp -d)
+# Download and install pre-built SpeedMonitor.app (native menu bar app)
+echo "Installing SpeedMonitor menu bar app..."
+SPEEDMONITOR_TEMP=$(mktemp -d)
 
-# Download Swift source and build script
-curl -fsSL "https://raw.githubusercontent.com/hyperkishore/home-internet/main/WiFiHelper/SpeedMonitorMenuBar.swift" -o "$SPEEDMONITOR_BUILD_TEMP/SpeedMonitorMenuBar.swift"
-
-# Create build script inline (simpler than downloading)
-APP_BUNDLE="$SPEEDMONITOR_BUILD_TEMP/SpeedMonitor.app"
-mkdir -p "$APP_BUNDLE/Contents/MacOS"
-mkdir -p "$APP_BUNDLE/Contents/Resources"
-
-# Create Info.plist
-cat > "$APP_BUNDLE/Contents/Info.plist" << 'PLIST_EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleIdentifier</key>
-    <string>com.speedmonitor.menubar</string>
-    <key>CFBundleName</key>
-    <string>Speed Monitor</string>
-    <key>CFBundleDisplayName</key>
-    <string>Speed Monitor</string>
-    <key>CFBundleVersion</key>
-    <string>3.1.0</string>
-    <key>CFBundleShortVersionString</key>
-    <string>3.1.0</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleExecutable</key>
-    <string>SpeedMonitor</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>12.0</string>
-    <key>LSApplicationCategoryType</key>
-    <string>public.app-category.utilities</string>
-    <key>LSUIElement</key>
-    <true/>
-    <key>NSHighResolutionCapable</key>
-    <true/>
-    <key>NSLocationUsageDescription</key>
-    <string>Speed Monitor needs Location Services to detect your WiFi network name (SSID). This is required by macOS. Your location is never tracked or stored.</string>
-    <key>NSLocationWhenInUseUsageDescription</key>
-    <string>Speed Monitor needs Location Services to detect your WiFi network name (SSID). This is required by macOS. Your location is never tracked or stored.</string>
-</dict>
-</plist>
-PLIST_EOF
-
-# Create PkgInfo
-echo "APPL????" > "$APP_BUNDLE/Contents/PkgInfo"
-
-# Compile Swift code
-if swiftc -O -parse-as-library \
-    -o "$APP_BUNDLE/Contents/MacOS/SpeedMonitor" \
-    "$SPEEDMONITOR_BUILD_TEMP/SpeedMonitorMenuBar.swift" \
-    -framework SwiftUI \
-    -framework CoreWLAN \
-    -framework CoreLocation \
-    -framework AppKit 2>/dev/null; then
-
-    # Install to Applications folder
+if curl -fsSL "https://raw.githubusercontent.com/hyperkishore/home-internet/main/dist/SpeedMonitor.app.zip" -o "$SPEEDMONITOR_TEMP/SpeedMonitor.app.zip"; then
+    # Unzip and install
+    unzip -q "$SPEEDMONITOR_TEMP/SpeedMonitor.app.zip" -d "$SPEEDMONITOR_TEMP"
     rm -rf /Applications/SpeedMonitor.app 2>/dev/null || true
-    cp -r "$APP_BUNDLE" /Applications/SpeedMonitor.app
+    cp -r "$SPEEDMONITOR_TEMP/SpeedMonitor.app" /Applications/
     echo "SpeedMonitor.app installed to /Applications"
 else
-    echo "Warning: SpeedMonitor.app build failed (Swift toolchain issue). WiFi detection will use fallback."
+    echo "Warning: Could not download SpeedMonitor.app. WiFi SSID detection will use fallback."
 fi
 
 # Cleanup temp directory
-rm -rf "$SPEEDMONITOR_BUILD_TEMP"
+rm -rf "$SPEEDMONITOR_TEMP"
 
 # Create launchd plist
 echo "Creating launchd service..."
