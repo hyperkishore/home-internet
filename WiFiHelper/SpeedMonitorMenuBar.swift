@@ -143,6 +143,35 @@ class WiFiManager: ObservableObject {
     }
 }
 
+// MARK: - Settings Manager
+class SettingsManager {
+    static let shared = SettingsManager()
+    private let configPath = NSHomeDirectory() + "/.config/nkspeedtest/settings.json"
+
+    var testIntervalSeconds: Int {
+        get { loadSettings()["testIntervalSeconds"] as? Int ?? 600 }
+        set { saveSettings(["testIntervalSeconds": newValue]) }
+    }
+
+    private func loadSettings() -> [String: Any] {
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: configPath)),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return [:]
+        }
+        return json
+    }
+
+    private func saveSettings(_ settings: [String: Any]) {
+        var current = loadSettings()
+        for (key, value) in settings {
+            current[key] = value
+        }
+        if let data = try? JSONSerialization.data(withJSONObject: current, options: .prettyPrinted) {
+            try? data.write(to: URL(fileURLWithPath: configPath))
+        }
+    }
+}
+
 // MARK: - Speed Data Manager
 class SpeedDataManager: ObservableObject {
     @Published var lastDownload: Double = 0
@@ -155,22 +184,48 @@ class SpeedDataManager: ObservableObject {
     @Published var isRunningTest: Bool = false
     @Published var isUpdating: Bool = false
     @Published var testCountdown: Int = 0
+    @Published var testIntervalSeconds: Int = 600 {
+        didSet {
+            SettingsManager.shared.testIntervalSeconds = testIntervalSeconds
+            restartAutoTestTimer()
+        }
+    }
 
     private var refreshTimer: Timer?
     private var countdownTimer: Timer?
+    private var autoTestTimer: Timer?
 
     init() {
+        // Load saved settings
+        testIntervalSeconds = SettingsManager.shared.testIntervalSeconds
+
         refresh()
-        // Refresh every 30 seconds
+
+        // Refresh display every 30 seconds
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             self?.refresh()
         }
+
+        // Start auto-test timer based on settings
+        restartAutoTestTimer()
 
         // Auto-run speed test if no data exists (first launch)
         if lastDownload == 0 && lastTest == nil {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
                 self?.runSpeedTest()
             }
+        }
+    }
+
+    func restartAutoTestTimer() {
+        autoTestTimer?.invalidate()
+
+        // Only start auto-test timer if interval is less than 10 minutes (600 sec)
+        // For 10+ min intervals, rely on launchd background service
+        guard testIntervalSeconds < 600 else { return }
+
+        autoTestTimer = Timer.scheduledTimer(withTimeInterval: Double(testIntervalSeconds), repeats: true) { [weak self] _ in
+            self?.runSpeedTest()
         }
     }
 
@@ -359,7 +414,16 @@ class SpeedDataManager: ObservableObject {
 struct SettingsView: View {
     @ObservedObject var locationManager: LocationManager
     @ObservedObject var wifiManager: WiFiManager
+    @ObservedObject var speedData: SpeedDataManager
     @Environment(\.dismiss) var dismiss
+
+    let intervalOptions: [(String, Int)] = [
+        ("30 seconds (Testing)", 30),
+        ("1 minute", 60),
+        ("5 minutes", 300),
+        ("10 minutes (Default)", 600),
+        ("30 minutes", 1800)
+    ]
 
     var body: some View {
         VStack(spacing: 20) {
@@ -368,6 +432,29 @@ struct SettingsView: View {
                 .fontWeight(.semibold)
 
             Divider()
+
+            // Test Interval Section
+            GroupBox("Speed Test Interval") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Picker("Run tests every:", selection: $speedData.testIntervalSeconds) {
+                        ForEach(intervalOptions, id: \.1) { option in
+                            Text(option.0).tag(option.1)
+                        }
+                    }
+                    .pickerStyle(.radioGroup)
+
+                    if speedData.testIntervalSeconds < 600 {
+                        Text("⚡ Fast mode: Tests run automatically at this interval")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                    } else {
+                        Text("💤 Normal mode: Tests run via background service")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding(.vertical, 8)
+            }
 
             // Location Permission Section
             GroupBox("WiFi Detection") {
@@ -463,7 +550,7 @@ struct SettingsView: View {
             }
         }
         .padding()
-        .frame(width: 400, height: 400)
+        .frame(width: 400, height: 550)
     }
 }
 
@@ -675,7 +762,7 @@ struct MenuBarView: View {
         .padding()
         .frame(width: 280)
         .sheet(isPresented: $showingSettings) {
-            SettingsView(locationManager: locationManager, wifiManager: wifiManager)
+            SettingsView(locationManager: locationManager, wifiManager: wifiManager, speedData: speedData)
         }
     }
 }
@@ -773,7 +860,8 @@ struct SpeedMonitorMenuBarApp: App {
         Settings {
             SettingsView(
                 locationManager: appDelegate.locationManager,
-                wifiManager: appDelegate.wifiManager
+                wifiManager: appDelegate.wifiManager,
+                speedData: appDelegate.speedData
             )
         }
     }
