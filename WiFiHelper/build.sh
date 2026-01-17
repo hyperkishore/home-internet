@@ -64,15 +64,40 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << EOF
 </plist>
 EOF
 
-# Compile Swift code
-echo "Compiling Swift..."
+# Compile Swift code as universal binary (Intel + Apple Silicon)
+echo "Compiling Swift (universal binary)..."
+
+# Compile for Apple Silicon (arm64)
+echo "  Building for arm64..."
 swiftc -O -parse-as-library \
-    -o "$APP_BUNDLE/Contents/MacOS/$APP_NAME" \
+    -target arm64-apple-macos12.0 \
+    -o "$BUILD_DIR/SpeedMonitor-arm64" \
     "$SCRIPT_DIR/SpeedMonitorMenuBar.swift" \
     -framework SwiftUI \
     -framework CoreWLAN \
     -framework CoreLocation \
     -framework AppKit
+
+# Compile for Intel (x86_64)
+echo "  Building for x86_64..."
+swiftc -O -parse-as-library \
+    -target x86_64-apple-macos12.0 \
+    -o "$BUILD_DIR/SpeedMonitor-x86_64" \
+    "$SCRIPT_DIR/SpeedMonitorMenuBar.swift" \
+    -framework SwiftUI \
+    -framework CoreWLAN \
+    -framework CoreLocation \
+    -framework AppKit
+
+# Create universal binary using lipo
+echo "  Creating universal binary..."
+lipo -create \
+    "$BUILD_DIR/SpeedMonitor-arm64" \
+    "$BUILD_DIR/SpeedMonitor-x86_64" \
+    -output "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
+
+# Clean up intermediate files
+rm -f "$BUILD_DIR/SpeedMonitor-arm64" "$BUILD_DIR/SpeedMonitor-x86_64"
 
 # Create PkgInfo
 echo "APPL????" > "$APP_BUNDLE/Contents/PkgInfo"
