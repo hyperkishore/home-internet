@@ -435,6 +435,12 @@
         textarea::placeholder {
             color: var(--muted-foreground);
         }
+
+        /* Button states */
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -595,14 +601,14 @@
                     resize: vertical;
                 "></textarea>
                 <div style="display: flex; gap: 12px; margin-top: 12px;">
+                    <button class="btn btn-primary" onclick="submitFeedback()" style="flex: 2;" id="submitBtn">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                        <span id="submitBtnText">Submit Feedback</span>
+                    </button>
                     <button class="btn btn-secondary" onclick="copyFeedback()" style="flex: 1;">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-                        <span id="copyFeedbackText">Copy to Clipboard</span>
+                        <span id="copyFeedbackText">Copy</span>
                     </button>
-                    <a href="mailto:kishore@hyperverge.co?subject=Speed%20Monitor%20Feedback&body=" class="btn btn-secondary" style="flex: 1;" id="emailLink" onclick="updateEmailBody()">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                        Email IT Support
-                    </a>
                 </div>
             </div>
         </div>
@@ -655,15 +661,46 @@
             navigator.clipboard.writeText(text).then(() => {
                 const btn = document.getElementById('copyFeedbackText');
                 btn.textContent = 'Copied!';
-                setTimeout(() => { btn.textContent = 'Copy to Clipboard'; }, 2000);
+                setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
             });
         }
 
-        function updateEmailBody() {
+        async function submitFeedback() {
             const text = document.getElementById('feedbackText').value;
-            const emailLink = document.getElementById('emailLink');
-            const encodedBody = encodeURIComponent(text || '(Please paste your Terminal output here)');
-            emailLink.href = `mailto:kishore@hyperverge.co?subject=Speed%20Monitor%20Feedback&body=${encodedBody}`;
+            if (!text.trim()) {
+                alert('Please paste your Terminal output or describe your issue');
+                return;
+            }
+
+            const btn = document.getElementById('submitBtn');
+            const btnText = document.getElementById('submitBtnText');
+            btn.disabled = true;
+            btnText.textContent = 'Sending...';
+
+            try {
+                const response = await fetch('/api/feedback', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        terminal_output: text
+                    })
+                });
+
+                if (response.ok) {
+                    btnText.textContent = 'Sent!';
+                    document.getElementById('feedbackText').value = '';
+                    setTimeout(() => {
+                        btnText.textContent = 'Submit Feedback';
+                        btn.disabled = false;
+                    }, 3000);
+                } else {
+                    throw new Error('Failed to submit');
+                }
+            } catch (err) {
+                btnText.textContent = 'Error - Try Again';
+                btn.disabled = false;
+                setTimeout(() => { btnText.textContent = 'Submit Feedback'; }, 3000);
+            }
         }
     </script>
 </body>

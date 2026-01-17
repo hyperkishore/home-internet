@@ -212,6 +212,16 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_conn_events_device ON connection_events(device_id, timestamp_utc);
   CREATE INDEX IF NOT EXISTS idx_conn_events_type ON connection_events(event_type);
+
+  -- v3.1: User feedback table
+  CREATE TABLE IF NOT EXISTS user_feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT,
+    message TEXT NOT NULL,
+    terminal_output TEXT,
+    user_agent TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 // v2.1: Add new columns to existing speed_results table (for existing databases)
@@ -1998,6 +2008,50 @@ app.post('/api/connection-events', (req, res) => {
   } catch (err) {
     console.error('Connection event insert error:', err);
     res.status(500).json({ error: 'Failed to record connection event' });
+  }
+});
+
+// Submit User Feedback (v3.1)
+app.post('/api/feedback', (req, res) => {
+  const { email, message, terminal_output } = req.body;
+
+  if (!message && !terminal_output) {
+    return res.status(400).json({ error: 'Please provide feedback or terminal output' });
+  }
+
+  try {
+    const userAgent = req.headers['user-agent'] || '';
+    const result = db.prepare(`
+      INSERT INTO user_feedback (email, message, terminal_output, user_agent)
+      VALUES (?, ?, ?, ?)
+    `).run(
+      email || null,
+      message || null,
+      terminal_output || null,
+      userAgent
+    );
+
+    console.log(`Feedback received: id=${result.lastInsertRowid}, email=${email || 'anonymous'}`);
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (err) {
+    console.error('Feedback insert error:', err);
+    res.status(500).json({ error: 'Failed to save feedback' });
+  }
+});
+
+// Get User Feedback (admin only)
+app.get('/api/feedback', (req, res) => {
+  try {
+    const feedback = db.prepare(`
+      SELECT * FROM user_feedback
+      ORDER BY created_at DESC
+      LIMIT 100
+    `).all();
+
+    res.json({ feedback });
+  } catch (err) {
+    console.error('Feedback fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch feedback' });
   }
 });
 
