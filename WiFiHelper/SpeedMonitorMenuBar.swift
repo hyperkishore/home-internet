@@ -275,17 +275,26 @@ class SpeedDataManager: ObservableObject {
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             // Download, install, and relaunch in one script
-            // The script launches the new app BEFORE this process exits
+            // IMPORTANT: Only delete old app AFTER new one is verified
             let script = """
-            curl -fsSL "https://raw.githubusercontent.com/hyperkishore/home-internet/main/dist/SpeedMonitor.app.zip" -o /tmp/SpeedMonitor.app.zip && \
-            unzip -o /tmp/SpeedMonitor.app.zip -d /tmp/ && \
-            rm -rf /Applications/SpeedMonitor.app && \
-            cp -r /tmp/SpeedMonitor.app /Applications/ && \
-            xattr -c /Applications/SpeedMonitor.app 2>/dev/null; \
-            find /Applications/SpeedMonitor.app -exec xattr -c {} \\; 2>/dev/null; \
-            rm -f /tmp/SpeedMonitor.app.zip && \
-            rm -rf /tmp/SpeedMonitor.app && \
-            sleep 1 && \
+            set -e
+            echo "Downloading update..."
+            curl -fsSL "https://raw.githubusercontent.com/hyperkishore/home-internet/main/dist/SpeedMonitor.app.zip" -o /tmp/SpeedMonitor.app.zip
+            echo "Extracting..."
+            unzip -o /tmp/SpeedMonitor.app.zip -d /tmp/
+            if [ ! -d "/tmp/SpeedMonitor.app" ]; then
+                echo "ERROR: Download failed"
+                exit 1
+            fi
+            echo "Installing..."
+            rm -rf /Applications/SpeedMonitor.app
+            cp -r /tmp/SpeedMonitor.app /Applications/
+            xattr -c /Applications/SpeedMonitor.app 2>/dev/null || true
+            find /Applications/SpeedMonitor.app -exec xattr -c {} \\; 2>/dev/null || true
+            rm -f /tmp/SpeedMonitor.app.zip
+            rm -rf /tmp/SpeedMonitor.app
+            echo "Launching..."
+            sleep 1
             open /Applications/SpeedMonitor.app
             """
 
