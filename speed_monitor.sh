@@ -9,7 +9,7 @@
 # v2.1.0: Added WiFi debugging metrics (MCS, error rates, BSSID tracking)
 #
 
-APP_VERSION="3.1.12"
+APP_VERSION="3.1.13"
 
 # Configuration
 DATA_DIR="$HOME/.local/share/nkspeedtest"
@@ -756,52 +756,133 @@ collect_metrics() {
     log "Running ping test for jitter..."
     eval $(run_ping_test)
 
-    # Speed test with proxy support and timeout
-    log "Running speed test..."
+    # Multi-strategy speed test with fallbacks
+    log "Running speed test (multi-strategy)..."
 
-    # Try to detect system proxy (macOS)
+    # Detect proxy settings (PAC file or explicit proxy)
+    local proxy_url=""
+    local pac_url=$(scutil --proxy 2>/dev/null | grep "ProxyAutoConfigURLString" | awk '{print $3}')
     local http_proxy_val=$(scutil --proxy 2>/dev/null | grep "HTTPProxy" | awk '{print $3}')
     local http_port_val=$(scutil --proxy 2>/dev/null | grep "HTTPPort" | awk '{print $3}')
+
     if [[ -n "$http_proxy_val" && -n "$http_port_val" ]]; then
-        export http_proxy="http://${http_proxy_val}:${http_port_val}"
-        export https_proxy="http://${http_proxy_val}:${http_port_val}"
-        log "Using system proxy: $http_proxy"
+        proxy_url="http://${http_proxy_val}:${http_port_val}"
+        export http_proxy="$proxy_url"
+        export https_proxy="$proxy_url"
+        export HTTP_PROXY="$proxy_url"
+        export HTTPS_PROXY="$proxy_url"
+        log "Using explicit proxy: $proxy_url"
+    elif [[ -n "$pac_url" ]]; then
+        log "PAC file detected: $pac_url (speedtest-cli doesn't support PAC)"
     fi
 
-    # Run speedtest with 90 second timeout
-    local speedtest_output=$(timeout 90 speedtest-cli --simple 2>&1)
-    local speedtest_exit=$?
+    local speedtest_success=false
 
-    if [[ $speedtest_exit -eq 0 ]]; then
-        LATENCY_MS=$(echo "$speedtest_output" | grep "Ping:" | awk '{print $2}')
-        DOWNLOAD_MBPS=$(echo "$speedtest_output" | grep "Download:" | awk '{print $2}')
-        UPLOAD_MBPS=$(echo "$speedtest_output" | grep "Upload:" | awk '{print $2}')
-        STATUS="success"
-        log "Speed test completed - Down: ${DOWNLOAD_MBPS} Mbps, Up: ${UPLOAD_MBPS} Mbps"
-    elif [[ $speedtest_exit -eq 124 ]]; then
-        # Timeout (exit code 124 from timeout command)
-        LATENCY_MS="0"
-        DOWNLOAD_MBPS="0"
-        UPLOAD_MBPS="0"
-        STATUS="timeout"
-        if [[ "$VPN_STATUS" == "connected" ]]; then
-            errors="vpn_blocking_speedtest"
-            log "Speed test timed out - VPN may be blocking. Try browser speedtest.net"
+    # Strategy 1: speedtest-cli with --secure flag (HTTPS, may work better with proxy)
+    if [[ "$speedtest_success" == "false" ]]; then
+        log "Strategy 1: speedtest-cli --secure"
+        local speedtest_output=$(timeout 60 speedtest-cli --secure --simple 2>&1)
+        local speedtest_exit=$?
+
+        if [[ $speedtest_exit -eq 0 ]] && echo "$speedtest_output" | grep -q "Download:"; then
+            LATENCY_MS=$(echo "$speedtest_output" | grep "Ping:" | awk '{print $2}')
+            DOWNLOAD_MBPS=$(echo "$speedtest_output" | grep "Download:" | awk '{print $2}')
+            UPLOAD_MBPS=$(echo "$speedtest_output" | grep "Upload:" | awk '{print $2}')
+            STATUS="success"
+            speedtest_success=true
+            log "Strategy 1 succeeded - Down: ${DOWNLOAD_MBPS} Mbps"
         else
-            errors="speedtest_timeout"
-            log "Speed test timed out after 90 seconds"
+            log "Strategy 1 failed: exit=$speedtest_exit"
         fi
-    else
+    fi
+
+    # Strategy 2: speedtest-cli without --secure (plain HTTP, might bypass some filters)
+    if [[ "$speedtest_success" == "false" ]]; then
+        log "Strategy 2: speedtest-cli standard"
+        local speedtest_output=$(timeout 60 speedtest-cli --simple 2>&1)
+        local speedtest_exit=$?
+
+        if [[ $speedtest_exit -eq 0 ]] && echo "$speedtest_output" | grep -q "Download:"; then
+            LATENCY_MS=$(echo "$speedtest_output" | grep "Ping:" | awk '{print $2}')
+            DOWNLOAD_MBPS=$(echo "$speedtest_output" | grep "Download:" | awk '{print $2}')
+            UPLOAD_MBPS=$(echo "$speedtest_output" | grep "Upload:" | awk '{print $2}')
+            STATUS="success"
+            speedtest_success=true
+            log "Strategy 2 succeeded - Down: ${DOWNLOAD_MBPS} Mbps"
+        else
+            log "Strategy 2 failed: exit=$speedtest_exit"
+        fi
+    fi
+
+    # Strategy 3: Cloudflare speed test (simple HTTPS download - works through most proxies)
+    if [[ "$speedtest_success" == "false" ]]; then
+        log "Strategy 3: Cloudflare download test"
+        # Download 25MB from Cloudflare and measure speed
+        local cf_result=$(curl -s -o /dev/null -w "%{speed_download},%{time_total},%{http_code}" \
+            --connect-timeout 10 --max-time 30 \
+            "https://speed.cloudflare.com/__down?bytes=25000000" 2>&1)
+
+        local cf_speed=$(echo "$cf_result" | cut -d',' -f1)
+        local cf_time=$(echo "$cf_result" | cut -d',' -f2)
+        local cf_code=$(echo "$cf_result" | cut -d',' -f3)
+
+        if [[ "$cf_code" == "200" ]] && [[ -n "$cf_speed" ]] && [[ "$cf_speed" != "0" ]]; then
+            # Convert bytes/sec to Mbps (bytes/sec * 8 / 1000000)
+            DOWNLOAD_MBPS=$(echo "scale=2; $cf_speed * 8 / 1000000" | bc 2>/dev/null || echo "0")
+            # Estimate latency from connection time (rough approximation)
+            LATENCY_MS=$(echo "scale=1; $cf_time * 100" | bc 2>/dev/null || echo "0")
+            UPLOAD_MBPS="0"  # Cloudflare test doesn't measure upload
+            STATUS="success_cloudflare"
+            speedtest_success=true
+            log "Strategy 3 succeeded (Cloudflare) - Down: ${DOWNLOAD_MBPS} Mbps"
+        else
+            log "Strategy 3 failed: code=$cf_code speed=$cf_speed"
+        fi
+    fi
+
+    # Strategy 4: Fast.com test (Netflix - often whitelisted by corporate)
+    if [[ "$speedtest_success" == "false" ]]; then
+        log "Strategy 4: Fast.com API test"
+        # Try to get a test URL from fast.com API
+        local fast_token=$(curl -s --connect-timeout 5 --max-time 10 \
+            "https://api.fast.com/netflix/speedtest/v2?https=true&token=YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm&urlCount=1" 2>&1 | \
+            grep -o '"url":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+        if [[ -n "$fast_token" ]]; then
+            local fast_result=$(curl -s -o /dev/null -w "%{speed_download},%{http_code}" \
+                --connect-timeout 10 --max-time 30 "$fast_token" 2>&1)
+            local fast_speed=$(echo "$fast_result" | cut -d',' -f1)
+            local fast_code=$(echo "$fast_result" | cut -d',' -f2)
+
+            if [[ "$fast_code" == "200" ]] && [[ -n "$fast_speed" ]] && [[ "$fast_speed" != "0" ]]; then
+                DOWNLOAD_MBPS=$(echo "scale=2; $fast_speed * 8 / 1000000" | bc 2>/dev/null || echo "0")
+                LATENCY_MS="0"
+                UPLOAD_MBPS="0"
+                STATUS="success_fastcom"
+                speedtest_success=true
+                log "Strategy 4 succeeded (Fast.com) - Down: ${DOWNLOAD_MBPS} Mbps"
+            else
+                log "Strategy 4 failed: code=$fast_code"
+            fi
+        else
+            log "Strategy 4 failed: couldn't get fast.com token"
+        fi
+    fi
+
+    # All strategies failed
+    if [[ "$speedtest_success" == "false" ]]; then
         LATENCY_MS="0"
         DOWNLOAD_MBPS="0"
         UPLOAD_MBPS="0"
-        STATUS="failed"
+
         if [[ "$VPN_STATUS" == "connected" ]]; then
+            STATUS="vpn_blocked"
             errors="vpn_blocking_speedtest"
-            log "Speed test failed with VPN - corporate policy may be blocking. Output: $speedtest_output"
+            log "All speed test strategies failed with VPN. Corporate firewall likely blocking."
         else
-            errors="speedtest_failed"
-            log "Speed test failed: $speedtest_output"
+            STATUS="failed"
+            errors="all_strategies_failed"
+            log "All speed test strategies failed without VPN. Network issue?"
         fi
     fi
 

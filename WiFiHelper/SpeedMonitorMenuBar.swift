@@ -443,7 +443,7 @@ class SpeedDataManager: ObservableObject {
         checkForUpdate()
     }
 
-    static let appVersion = "3.1.12"
+    static let appVersion = "3.1.13"
 
     func checkForUpdate() {
         let versionURL = URL(string: "https://home-internet-production.up.railway.app/api/version")!
