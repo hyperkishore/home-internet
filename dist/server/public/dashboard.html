@@ -1434,7 +1434,7 @@
             <div class="stat-card">
                 <div class="stat-label">Fleet Health</div>
                 <div class="stat-value" style="margin-top: 20px; color: var(--success)" id="fleetHealth">--</div>
-                <div class="stat-unit">Excellent</div>
+                <div class="stat-unit" id="fleetHealthLabel">--</div>
             </div>
         </div>
 
@@ -1900,7 +1900,14 @@
             const healthPct = active.length > 0 ? Math.round((healthy / active.length) * 100) : 100;
 
             document.getElementById('kpiHealth').textContent = healthPct + '%';
-            document.getElementById('kpiLatency').textContent = Math.round(data.overall.avg_latency || 0) + 'ms';
+
+            // Use MEDIAN latency instead of average to avoid outlier skew
+            const latencies = devices.map(d => d.avg_latency || 0).filter(l => l > 0 && l < 1000).sort((a, b) => a - b);
+            const medianLatency = latencies.length > 0
+                ? latencies[Math.floor(latencies.length / 2)]
+                : 0;
+            document.getElementById('kpiLatency').textContent = Math.round(medianLatency) + 'ms';
+
             document.getElementById('kpiDevices').textContent = data.overall.total_devices || 0;
 
             // Network Load: tests in last 24h / 24
@@ -2005,10 +2012,29 @@
                 if (activeUsersEl) activeUsersEl.textContent = onlineDevices.length;
 
                 const fleetHealthEl = document.getElementById('fleetHealth');
+                const fleetHealthLabel = document.getElementById('fleetHealthLabel');
                 if (fleetHealthEl) {
                     const healthyCount = onlineDevices.filter(d => (d.avg_download || 0) > 20).length;
                     const healthPct = onlineDevices.length > 0 ? (healthyCount / onlineDevices.length) * 100 : 100;
                     fleetHealthEl.textContent = Math.round(healthPct) + '%';
+
+                    // Dynamic label and color based on health percentage
+                    let label, color;
+                    if (healthPct >= 80) {
+                        label = 'Excellent';
+                        color = 'var(--success)';
+                    } else if (healthPct >= 60) {
+                        label = 'Good';
+                        color = 'var(--success)';
+                    } else if (healthPct >= 40) {
+                        label = 'Needs Attention';
+                        color = 'var(--warning)';
+                    } else {
+                        label = 'Critical';
+                        color = 'var(--destructive)';
+                    }
+                    fleetHealthEl.style.color = color;
+                    if (fleetHealthLabel) fleetHealthLabel.textContent = label;
                 }
 
                 // Update Phase 5 Components

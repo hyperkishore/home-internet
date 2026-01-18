@@ -571,18 +571,35 @@ struct MenuBarView: View {
     @State private var showingSettings = false
     @State private var isPulsing = false
 
+    let appVersion = "3.1.0"
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Header
-            HStack {
+            // Header with version
+            VStack(alignment: .leading, spacing: 2) {
                 Text("Speed Monitor")
                     .font(.headline)
-                Spacer()
-                if speedData.updateAvailable {
-                    Text("🔄 Update")
+                Text("v\(appVersion)")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+
+            // Update banner (prominent when available)
+            if speedData.updateAvailable {
+                HStack {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .foregroundColor(.white)
+                    Text("Update Available!")
+                        .fontWeight(.medium)
+                    Spacer()
+                    Text("Click below to install")
                         .font(.caption)
-                        .foregroundColor(.blue)
                 }
+                .font(.caption)
+                .foregroundColor(.white)
+                .padding(8)
+                .background(Color.blue)
+                .cornerRadius(6)
             }
 
             Divider()
