@@ -4,7 +4,7 @@ const cors = require('cors');
 const path = require('path');
 const rateLimit = require('express-rate-limit');
 
-const APP_VERSION = '3.1.07';
+const APP_VERSION = '3.1.08';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -222,6 +222,38 @@ db.exec(`
     user_agent TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  -- v3.1.08: Device diagnostics table (for remote troubleshooting)
+  CREATE TABLE IF NOT EXISTS device_diagnostics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id TEXT NOT NULL,
+    user_email TEXT,
+    hostname TEXT,
+
+    -- Versions
+    app_version TEXT,
+    script_version TEXT,
+    os_version TEXT,
+
+    -- Status checks
+    launchd_status TEXT,
+    speedtest_installed INTEGER DEFAULT 0,
+    speedtest_path TEXT,
+
+    -- Logs
+    error_log TEXT,
+    last_test_result TEXT,
+
+    -- Network info
+    network_interfaces TEXT,
+    wifi_info TEXT,
+
+    -- Timestamps
+    submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_diagnostics_device ON device_diagnostics(device_id, submitted_at);
+  CREATE INDEX IF NOT EXISTS idx_diagnostics_email ON device_diagnostics(user_email);
 `);
 
 // v2.1: Add new columns to existing speed_results table (for existing databases)
@@ -2052,6 +2084,99 @@ app.get('/api/feedback', (req, res) => {
   } catch (err) {
     console.error('Feedback fetch error:', err);
     res.status(500).json({ error: 'Failed to fetch feedback' });
+  }
+});
+
+// ============================================================
+// DEVICE DIAGNOSTICS API (v3.1.08) - Remote troubleshooting
+// ============================================================
+
+// POST: Submit diagnostic logs from client
+app.post('/api/diagnostics', (req, res) => {
+  const data = req.body;
+
+  if (!data.device_id) {
+    return res.status(400).json({ error: 'device_id is required' });
+  }
+
+  try {
+    const result = db.prepare(`
+      INSERT INTO device_diagnostics (
+        device_id, user_email, hostname,
+        app_version, script_version, os_version,
+        launchd_status, speedtest_installed, speedtest_path,
+        error_log, last_test_result,
+        network_interfaces, wifi_info
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      data.device_id,
+      data.user_email || null,
+      data.hostname || null,
+      data.app_version || null,
+      data.script_version || null,
+      data.os_version || null,
+      data.launchd_status || null,
+      data.speedtest_installed ? 1 : 0,
+      data.speedtest_path || null,
+      data.error_log || null,
+      data.last_test_result || null,
+      data.network_interfaces || null,
+      data.wifi_info || null
+    );
+
+    console.log(`Diagnostics received: device=${data.device_id}, id=${result.lastInsertRowid}`);
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (err) {
+    console.error('Diagnostics insert error:', err);
+    res.status(500).json({ error: 'Failed to save diagnostics' });
+  }
+});
+
+// GET: List all recent diagnostics (for dashboard)
+app.get('/api/diagnostics', (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+
+  try {
+    const diagnostics = db.prepare(`
+      SELECT
+        id, device_id, user_email, hostname,
+        app_version, script_version, os_version,
+        launchd_status, speedtest_installed, speedtest_path,
+        submitted_at,
+        -- Truncate logs for list view
+        SUBSTR(error_log, 1, 200) as error_preview
+      FROM device_diagnostics
+      ORDER BY submitted_at DESC
+      LIMIT ?
+    `).all(limit);
+
+    res.json({ diagnostics });
+  } catch (err) {
+    console.error('Diagnostics fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch diagnostics' });
+  }
+});
+
+// GET: Get full diagnostics for a specific device
+app.get('/api/diagnostics/:device_id', (req, res) => {
+  const { device_id } = req.params;
+
+  try {
+    const diagnostics = db.prepare(`
+      SELECT * FROM device_diagnostics
+      WHERE device_id = ?
+      ORDER BY submitted_at DESC
+      LIMIT 10
+    `).all(device_id);
+
+    if (diagnostics.length === 0) {
+      return res.status(404).json({ error: 'No diagnostics found for this device' });
+    }
+
+    res.json({ device_id, diagnostics });
+  } catch (err) {
+    console.error('Diagnostics fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch diagnostics' });
   }
 });
 

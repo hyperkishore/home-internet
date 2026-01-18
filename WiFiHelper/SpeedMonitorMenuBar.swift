@@ -183,6 +183,8 @@ class SpeedDataManager: ObservableObject {
     @Published var updateAvailable: Bool = false
     @Published var isRunningTest: Bool = false
     @Published var isUpdating: Bool = false
+    @Published var isSubmittingDiagnostics: Bool = false
+    @Published var diagnosticsResult: String = ""
     @Published var testCountdown: Int = 0
     @Published var isPaused: Bool = false {
         didSet {
@@ -407,7 +409,7 @@ class SpeedDataManager: ObservableObject {
         checkForUpdate()
     }
 
-    static let appVersion = "3.1.07"
+    static let appVersion = "3.1.08"
 
     func checkForUpdate() {
         let versionURL = URL(string: "https://home-internet-production.up.railway.app/api/version")!
@@ -436,6 +438,124 @@ class SpeedDataManager: ObservableObject {
             if p1 < p2 { return false }
         }
         return false  // Equal versions
+    }
+
+    // Submit diagnostic logs to server for remote troubleshooting
+    func submitDiagnostics() {
+        guard !isSubmittingDiagnostics else { return }
+        isSubmittingDiagnostics = true
+        diagnosticsResult = ""
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            // Collect diagnostic information via shell commands
+            let script = """
+            # Collect diagnostic info as JSON
+            DEVICE_ID=$(cat ~/.config/nkspeedtest/device_id 2>/dev/null || echo "unknown")
+            USER_EMAIL=$(cat ~/.config/nkspeedtest/user_email 2>/dev/null || echo "")
+            HOSTNAME=$(hostname)
+            OS_VERSION=$(sw_vers -productVersion)
+            APP_VERSION="\(SpeedDataManager.appVersion)"
+            SCRIPT_VERSION=$(grep "APP_VERSION=" ~/.local/bin/speed_monitor.sh 2>/dev/null | head -1 | cut -d'"' -f2 || echo "unknown")
+
+            # Check launchd status
+            LAUNCHD_STATUS=$(launchctl list 2>/dev/null | grep speedmonitor || echo "not loaded")
+
+            # Check speedtest-cli
+            SPEEDTEST_PATH=$(which speedtest-cli 2>/dev/null || echo "not found")
+            SPEEDTEST_INSTALLED=$([[ -x "$SPEEDTEST_PATH" ]] && echo "true" || echo "false")
+
+            # Get error logs (last 30 lines)
+            ERROR_LOG=$(tail -30 ~/.local/share/nkspeedtest/launchd_stderr.log 2>/dev/null | sed 's/"/\\\\"/g' | tr '\\n' '|' || echo "no logs")
+
+            # Get last test result
+            LAST_TEST=$(tail -1 ~/.local/share/nkspeedtest/speed_log.csv 2>/dev/null || echo "no data")
+
+            # Get network interfaces
+            NETWORK_INFO=$(ifconfig -a 2>/dev/null | grep -E "^[a-z]|inet " | head -20 | tr '\\n' '|' || echo "")
+
+            # Get WiFi info
+            WIFI_INFO=$(/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -I 2>/dev/null | tr '\\n' '|' || echo "")
+
+            # Output as JSON
+            cat << EOF
+            {
+              "device_id": "$DEVICE_ID",
+              "user_email": "$USER_EMAIL",
+              "hostname": "$HOSTNAME",
+              "os_version": "$OS_VERSION",
+              "app_version": "$APP_VERSION",
+              "script_version": "$SCRIPT_VERSION",
+              "launchd_status": "$LAUNCHD_STATUS",
+              "speedtest_installed": $SPEEDTEST_INSTALLED,
+              "speedtest_path": "$SPEEDTEST_PATH",
+              "error_log": "$ERROR_LOG",
+              "last_test_result": "$LAST_TEST",
+              "network_interfaces": "$NETWORK_INFO",
+              "wifi_info": "$WIFI_INFO"
+            }
+            EOF
+            """
+
+            let process = Process()
+            let pipe = Pipe()
+            process.executableURL = URL(fileURLWithPath: "/bin/bash")
+            process.arguments = ["-c", script]
+            process.standardOutput = pipe
+            process.standardError = pipe
+
+            var jsonOutput = ""
+            do {
+                try process.run()
+                process.waitUntilExit()
+
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                jsonOutput = String(data: data, encoding: .utf8) ?? "{}"
+            } catch {
+                print("Failed to collect diagnostics: \\(error)")
+                DispatchQueue.main.async {
+                    self?.isSubmittingDiagnostics = false
+                    self?.diagnosticsResult = "❌ Failed to collect"
+                }
+                return
+            }
+
+            // POST to server
+            guard let url = URL(string: "https://home-internet-production.up.railway.app/api/diagnostics"),
+                  let jsonData = jsonOutput.data(using: .utf8) else {
+                DispatchQueue.main.async {
+                    self?.isSubmittingDiagnostics = false
+                    self?.diagnosticsResult = "❌ Invalid data"
+                }
+                return
+            }
+
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = jsonData
+
+            URLSession.shared.dataTask(with: request) { data, response, error in
+                DispatchQueue.main.async {
+                    self?.isSubmittingDiagnostics = false
+
+                    if let error = error {
+                        self?.diagnosticsResult = "❌ \\(error.localizedDescription)"
+                        return
+                    }
+
+                    if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 {
+                        self?.diagnosticsResult = "✅ Sent to IT"
+                    } else {
+                        self?.diagnosticsResult = "❌ Server error"
+                    }
+
+                    // Clear result after 5 seconds
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                        self?.diagnosticsResult = ""
+                    }
+                }
+            }.resume()
+        }
     }
 
     var timeSinceTest: String {
@@ -825,6 +945,22 @@ struct MenuBarView: View {
                 }
             }
             .buttonStyle(.plain)
+
+            Button(action: { speedData.submitDiagnostics() }) {
+                HStack {
+                    Image(systemName: speedData.isSubmittingDiagnostics ? "hourglass" : "stethoscope")
+                        .foregroundColor(.orange)
+                    if !speedData.diagnosticsResult.isEmpty {
+                        Text(speedData.diagnosticsResult)
+                    } else if speedData.isSubmittingDiagnostics {
+                        Text("Sending...")
+                    } else {
+                        Text("Send Diagnostics to IT")
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            .disabled(speedData.isSubmittingDiagnostics)
 
             Button(action: { speedData.updateApp() }) {
                 HStack {
