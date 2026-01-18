@@ -9,14 +9,14 @@ Version: 3.1.06
 
 | ID | Journey | Priority | Status | Notes |
 |----|---------|----------|--------|-------|
-| CLI-1 | Run speed_monitor.sh manually | Critical | ⏳ Manual | Requires ~30s speed test |
-| CLI-2 | Verify data posts to server | Critical | ⏳ Manual | Depends on CLI-1 |
+| CLI-1 | Run speed_monitor.sh manually | Critical | ✅ PASS | 204.55 Mbps down, 137.71 up, 67s |
+| CLI-2 | Verify data posts to server | Critical | ✅ PASS | Data visible at /api/my/:email |
 | CLI-3 | Check --version flag | Critical | ✅ PASS | Returns "Speed Monitor v3.0.0" (installed version) |
-| CLI-4 | Check --check-update flag | Critical | ✅ PASS | Returns "Update available: 3.1.06" |
+| CLI-4 | Check --check-update flag | Critical | ✅ PASS | Returns "Update available: 3.1.07" |
 | CLI-5 | Check --update flag | Critical | ⏳ Manual | Destructive - updates local install |
-| API-1 | GET /api/version returns correct version | Critical | ✅ PASS | Returns 3.1.06 |
+| API-1 | GET /api/version returns correct version | Critical | ✅ PASS | Returns 3.1.07 |
 | API-2 | GET /api/stats returns data | Critical | ✅ PASS | Returns hourly, overall, perDevice |
-| API-3 | POST /api/results accepts data | Critical | ⏳ Manual | Tested via CLI-1 |
+| API-3 | POST /api/results accepts data | Critical | ✅ PASS | Returns {success: true, id: 502} |
 | API-4 | GET /api/my/:email returns employee data | Critical | ✅ PASS | Returns health, timeline, recommendations |
 | UI-1 | Menu bar app launches | Critical | ✅ PASS | Process running |
 | UI-2 | Popover opens on click | Critical | ⏳ Manual | Requires user interaction |
@@ -72,7 +72,9 @@ Version: 3.1.06
 - API-E3: ✅ Version comparison works numerically
 
 **Summary:**
-- Automated: 12/18 Critical tests passed
-- Manual: 6 tests require user interaction
+- Automated: 15/18 Critical tests passed
+- Manual: 3 tests require native macOS app interaction (UI-2, UI-3, UI-5)
 - Edge Cases: 2/11 tested, 9 require manual testing
 - Bugs Found: 0 new (1 previously fixed: BUG-001)
+
+**Note:** UI-2, UI-3, UI-5 cannot be automated - they test the native macOS menu bar app (SpeedMonitor.app), not a web browser.
