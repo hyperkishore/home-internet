@@ -184,6 +184,16 @@ class SpeedDataManager: ObservableObject {
     @Published var isRunningTest: Bool = false
     @Published var isUpdating: Bool = false
     @Published var testCountdown: Int = 0
+    @Published var isPaused: Bool = false {
+        didSet {
+            if isPaused {
+                autoTestTimer?.invalidate()
+                autoTestTimer = nil
+            } else {
+                restartAutoTestTimer()
+            }
+        }
+    }
     @Published var testIntervalSeconds: Int = 600 {
         didSet {
             SettingsManager.shared.testIntervalSeconds = testIntervalSeconds
@@ -219,6 +229,9 @@ class SpeedDataManager: ObservableObject {
 
     func restartAutoTestTimer() {
         autoTestTimer?.invalidate()
+
+        // Don't start timer if paused
+        guard !isPaused else { return }
 
         // Only start auto-test timer if interval is less than 10 minutes (600 sec)
         // For 10+ min intervals, rely on launchd background service
@@ -394,7 +407,7 @@ class SpeedDataManager: ObservableObject {
         checkForUpdate()
     }
 
-    static let appVersion = "3.1.03"
+    static let appVersion = "3.1.04"
 
     func checkForUpdate() {
         let versionURL = URL(string: "https://home-internet-production.up.railway.app/api/version")!
@@ -580,16 +593,51 @@ struct MenuBarView: View {
     @ObservedObject var locationManager: LocationManager
     @State private var showingSettings = false
     @State private var isPulsing = false
+    @State private var isHoveringHeader = false
+    var onClose: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Header with version
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Speed Monitor")
-                    .font(.headline)
-                Text("v\(SpeedDataManager.appVersion)")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
+            // Header with version + hover controls
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Speed Monitor")
+                        .font(.headline)
+                    Text("v\(SpeedDataManager.appVersion)")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                // Hover-only controls
+                if isHoveringHeader {
+                    HStack(spacing: 8) {
+                        // Pause button
+                        Button(action: { speedData.isPaused.toggle() }) {
+                            Image(systemName: speedData.isPaused ? "play.fill" : "pause.fill")
+                                .foregroundColor(speedData.isPaused ? .green : .orange)
+                                .frame(width: 20, height: 20)
+                        }
+                        .buttonStyle(.plain)
+                        .help(speedData.isPaused ? "Resume auto-tests" : "Pause auto-tests")
+
+                        // Close button
+                        Button(action: { onClose?() }) {
+                            Image(systemName: "xmark")
+                                .foregroundColor(.secondary)
+                                .frame(width: 20, height: 20)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Close")
+                    }
+                }
+            }
+            .padding(.vertical, 4)
+            .onHover { hovering in
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    isHoveringHeader = hovering
+                }
             }
 
             // Update banner (prominent when available)
@@ -834,7 +882,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         popover.contentSize = NSSize(width: 280, height: 400)
         popover.behavior = .transient
 
-        let contentView = MenuBarView(speedData: speedData, wifiManager: wifiManager, locationManager: locationManager)
+        let contentView = MenuBarView(
+            speedData: speedData,
+            wifiManager: wifiManager,
+            locationManager: locationManager,
+            onClose: { [weak self] in
+                self?.popover.performClose(nil)
+            }
+        )
         popover.contentViewController = NSHostingController(rootView: contentView)
 
         statusItem.button?.action = #selector(togglePopover)
