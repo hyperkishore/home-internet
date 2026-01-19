@@ -2434,6 +2434,150 @@ app.get('/api/devices/:device_id/diagnose', (req, res) => {
   }
 });
 
+// Device Time-of-Day Analysis - peak hours and congestion patterns
+app.get('/api/devices/:device_id/timeofday', (req, res) => {
+  const { device_id } = req.params;
+  const days = Math.min(parseInt(req.query.days) || 7, 30);
+
+  try {
+    const data = db.prepare(`
+      SELECT
+        strftime('%H', timestamp_utc) as hour,
+        download_mbps,
+        upload_mbps,
+        latency_ms,
+        jitter_ms,
+        vpn_status
+      FROM speed_results
+      WHERE device_id = ?
+        AND timestamp_utc > datetime('now', '-' || ? || ' days')
+        AND download_mbps > 0
+    `).all(device_id, days);
+
+    // Group by hour
+    const byHour = {};
+    for (let h = 0; h < 24; h++) {
+      byHour[h] = { speeds: [], latencies: [], jitters: [], vpn_on: 0, vpn_off: 0 };
+    }
+
+    for (const row of data) {
+      const hour = parseInt(row.hour);
+      byHour[hour].speeds.push(row.download_mbps);
+      byHour[hour].latencies.push(row.latency_ms || 0);
+      byHour[hour].jitters.push(row.jitter_ms || 0);
+      if (row.vpn_status === 'connected') byHour[hour].vpn_on++;
+      else byHour[hour].vpn_off++;
+    }
+
+    const hourlyStats = Object.entries(byHour).map(([hour, d]) => {
+      const avg = arr => arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+      const slowCount = d.speeds.filter(s => s < 50).length;
+      return {
+        hour: parseInt(hour),
+        test_count: d.speeds.length,
+        avg_download: parseFloat(avg(d.speeds).toFixed(1)),
+        avg_latency: parseFloat(avg(d.latencies).toFixed(1)),
+        avg_jitter: parseFloat(avg(d.jitters).toFixed(1)),
+        slow_pct: d.speeds.length > 0 ? Math.round(slowCount * 100 / d.speeds.length) : 0,
+        vpn_on: d.vpn_on,
+        vpn_off: d.vpn_off
+      };
+    });
+
+    // Find peak congestion hours
+    const congestionHours = hourlyStats
+      .filter(h => h.test_count >= 3 && h.slow_pct >= 30)
+      .sort((a, b) => b.slow_pct - a.slow_pct);
+
+    // Find best hours
+    const bestHours = hourlyStats
+      .filter(h => h.test_count >= 3 && h.slow_pct === 0)
+      .sort((a, b) => b.avg_download - a.avg_download);
+
+    // VPN comparison
+    const vpnOn = data.filter(d => d.vpn_status === 'connected');
+    const vpnOff = data.filter(d => d.vpn_status !== 'connected');
+    const vpnComparison = {
+      vpn_on_avg: vpnOn.length > 0 ? parseFloat((vpnOn.reduce((a, d) => a + d.download_mbps, 0) / vpnOn.length).toFixed(1)) : null,
+      vpn_on_tests: vpnOn.length,
+      vpn_off_avg: vpnOff.length > 0 ? parseFloat((vpnOff.reduce((a, d) => a + d.download_mbps, 0) / vpnOff.length).toFixed(1)) : null,
+      vpn_off_tests: vpnOff.length
+    };
+
+    res.json({
+      device_id,
+      period_days: days,
+      total_tests: data.length,
+      hourly: hourlyStats,
+      congestion_hours: congestionHours.slice(0, 5),
+      best_hours: bestHours.slice(0, 5),
+      vpn_comparison: vpnComparison,
+      insights: generateTimeInsights(hourlyStats, congestionHours, bestHours, vpnComparison)
+    });
+  } catch (err) {
+    console.error('Device timeofday error:', err);
+    res.status(500).json({ error: 'Failed to get time analysis' });
+  }
+});
+
+function generateTimeInsights(hourlyStats, congestionHours, bestHours, vpnComparison) {
+  const insights = [];
+
+  if (congestionHours.length > 0) {
+    const peakHours = congestionHours.map(h => `${h.hour}:00`).join(', ');
+    insights.push({
+      type: 'congestion',
+      severity: 'high',
+      message: `Peak congestion detected at ${peakHours} with ${congestionHours[0].slow_pct}% slow tests`,
+      recommendation: 'Avoid heavy downloads during these hours or contact ISP about peak-hour throttling'
+    });
+  }
+
+  if (bestHours.length > 0) {
+    const goodHours = bestHours.slice(0, 3).map(h => `${h.hour}:00`).join(', ');
+    insights.push({
+      type: 'optimal',
+      severity: 'info',
+      message: `Best performance at ${goodHours} with ${bestHours[0].avg_download} Mbps average`,
+      recommendation: 'Schedule large downloads or video calls during these times'
+    });
+  }
+
+  if (vpnComparison.vpn_on_avg && vpnComparison.vpn_off_avg) {
+    const diff = vpnComparison.vpn_on_avg - vpnComparison.vpn_off_avg;
+    if (Math.abs(diff) > 20) {
+      insights.push({
+        type: 'vpn_impact',
+        severity: diff < -20 ? 'warning' : 'info',
+        message: diff < 0
+          ? `VPN reduces speed by ${Math.abs(diff).toFixed(0)} Mbps (${vpnComparison.vpn_on_avg} vs ${vpnComparison.vpn_off_avg} Mbps)`
+          : `VPN improves speed by ${diff.toFixed(0)} Mbps - possible ISP throttling without VPN`,
+        recommendation: diff < -20
+          ? 'Consider split-tunneling or a faster VPN server'
+          : 'ISP may be throttling certain traffic - VPN helps bypass this'
+      });
+    }
+  }
+
+  // Check for night-time vs day-time pattern
+  const dayHours = hourlyStats.filter(h => h.hour >= 9 && h.hour <= 17 && h.test_count > 0);
+  const nightHours = hourlyStats.filter(h => (h.hour >= 22 || h.hour <= 6) && h.test_count > 0);
+  if (dayHours.length > 0 && nightHours.length > 0) {
+    const dayAvg = dayHours.reduce((a, h) => a + h.avg_download * h.test_count, 0) / dayHours.reduce((a, h) => a + h.test_count, 0);
+    const nightAvg = nightHours.reduce((a, h) => a + h.avg_download * h.test_count, 0) / nightHours.reduce((a, h) => a + h.test_count, 0);
+    if (nightAvg > dayAvg * 1.5) {
+      insights.push({
+        type: 'time_pattern',
+        severity: 'warning',
+        message: `Night speeds (${nightAvg.toFixed(0)} Mbps) are ${((nightAvg/dayAvg - 1) * 100).toFixed(0)}% faster than daytime (${dayAvg.toFixed(0)} Mbps)`,
+        recommendation: 'This indicates ISP network congestion during business hours - consider complaining to ISP'
+      });
+    }
+  }
+
+  return insights;
+}
+
 // Device Data Export (CSV)
 app.get('/api/devices/:device_id/export', (req, res) => {
   const { device_id } = req.params;
