@@ -1,4 +1,4 @@
-# Speed Monitor v3.1.07 - Organization Internet Monitoring
+# Speed Monitor v3.1.15 - Organization Internet Monitoring
 
 ## IMPORTANT: Version Management
 
@@ -10,6 +10,19 @@
 5. `dist/install.sh` - Version in comments/echo statements
 6. This file (`CLAUDE.md`) - Header and any version references
 7. **`dist/SpeedMonitor.app.zip`** - MUST be rebuilt (see below)
+
+## MUST COMPLY: Testing Checklist
+
+**Before pushing ANY change, you MUST verify:**
+1. ✅ All version numbers updated (run: `grep -h 'APP_VERSION\|appVersion' speed_monitor.sh dist/server/index.js WiFiHelper/SpeedMonitorMenuBar.swift VERSION`)
+2. ✅ App rebuilt: `cd WiFiHelper && ./build.sh`
+3. ✅ Zip updated: `cd WiFiHelper/build && zip -r ../../dist/SpeedMonitor.app.zip SpeedMonitor.app`
+4. ✅ Local script updated: `cp speed_monitor.sh ~/.local/bin/speed_monitor.sh`
+5. ✅ Test speed test works: `~/.local/bin/speed_monitor.sh`
+6. ✅ Commit includes the zip file: `git add dist/SpeedMonitor.app.zip`
+
+**After pushing, verify on GitHub:**
+- Download URL works: `curl -fsSL -I "https://raw.githubusercontent.com/hyperkishore/home-internet/main/dist/SpeedMonitor.app.zip"`
 
 **Version format:** `MAJOR.MINOR.PATCH` (e.g., 3.1.0)
 - PATCH: Bug fixes
