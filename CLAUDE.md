@@ -554,3 +554,4 @@ WiFi metrics collection uses a 3-tier fallback:
 | TCP Retransmits | netstat -s | Connection quality |
 | BSSID Changes | Tracked | Roaming detection |
 | User Email | ~/.config/nkspeedtest/user_email | Set during install |
+
