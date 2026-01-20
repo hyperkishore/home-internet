@@ -363,10 +363,10 @@ class SpeedDataManager: ObservableObject {
                 print(msg)
             }
 
-            log("=== Update started ===")
+            log("=== Update started (from GitHub, bypassing Railway) ===")
 
-            // Step 1: Download the update
-            log("Step 1: Downloading...")
+            // Step 1: Download the update directly from GitHub
+            log("Step 1: Downloading from GitHub...")
             let downloadScript = """
             curl -fsSL "https://raw.githubusercontent.com/hyperkishore/home-internet/main/dist/SpeedMonitor.app.zip" -o /tmp/SpeedMonitor.app.zip 2>&1 && \
             rm -rf /tmp/SpeedMonitor.app && \
@@ -537,19 +537,20 @@ class SpeedDataManager: ObservableObject {
         checkForUpdate()
     }
 
-    static let appVersion = "3.1.21"
+    static let appVersion = "3.1.22"
 
     func checkForUpdate() {
-        let versionURL = URL(string: "https://home-internet-production.up.railway.app/api/version")!
+        // Check version directly from GitHub (not Railway) to avoid deployment delays
+        let versionURL = URL(string: "https://raw.githubusercontent.com/hyperkishore/home-internet/main/VERSION")!
         URLSession.shared.dataTask(with: versionURL) { [weak self] data, _, _ in
             guard let data = data,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let serverVersion = json["version"] as? String else { return }
+                  let versionString = String(data: data, encoding: .utf8) else { return }
 
-            // Compare app's built-in version with server version using semantic versioning
+            // VERSION file contains just the version number (e.g., "3.1.21\n")
+            let remoteVersion = versionString.trimmingCharacters(in: .whitespacesAndNewlines)
             let localVersion = SpeedDataManager.appVersion
             DispatchQueue.main.async {
-                self?.updateAvailable = Self.isNewerVersion(serverVersion, than: localVersion)
+                self?.updateAvailable = Self.isNewerVersion(remoteVersion, than: localVersion)
             }
         }.resume()
     }
