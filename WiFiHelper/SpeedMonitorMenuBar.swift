@@ -298,69 +298,70 @@ class SpeedDataManager: ObservableObject {
         isUpdating = true
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            // Write script to file to avoid escaping issues
-            let scriptPath = "/tmp/speedmonitor_update.sh"
-            let logPath = "/tmp/speedmonitor_update.log"
+            // Step 1: Download the update
+            let downloadScript = """
+            curl -fsSL "https://raw.githubusercontent.com/hyperkishore/home-internet/main/dist/SpeedMonitor.app.zip" -o /tmp/SpeedMonitor.app.zip && \
+            rm -rf /tmp/SpeedMonitor.app && \
+            unzip -o /tmp/SpeedMonitor.app.zip -d /tmp/ && \
+            test -d "/tmp/SpeedMonitor.app" && test -f "/tmp/SpeedMonitor.app/Contents/MacOS/SpeedMonitor"
+            """
 
-            let scriptContent = """
-#!/bin/bash
-set -e
-exec > "\(logPath)" 2>&1
-echo "=== SpeedMonitor Update $(date) ==="
-echo "Step 1: Downloading..."
-curl -fsSL "https://raw.githubusercontent.com/hyperkishore/home-internet/main/dist/SpeedMonitor.app.zip" -o /tmp/SpeedMonitor.app.zip
-ls -la /tmp/SpeedMonitor.app.zip
-echo "Step 2: Extracting..."
-rm -rf /tmp/SpeedMonitor.app
-unzip -o /tmp/SpeedMonitor.app.zip -d /tmp/
-echo "Step 3: Verifying..."
-test -d "/tmp/SpeedMonitor.app" && test -f "/tmp/SpeedMonitor.app/Contents/MacOS/SpeedMonitor"
-echo "Verified OK"
-echo "Step 4: Installing..."
-rm -rf /Applications/SpeedMonitor.app
-cp -r /tmp/SpeedMonitor.app /Applications/
-echo "Installed"
-echo "Step 5: Cleanup..."
-rm -f /tmp/SpeedMonitor.app.zip
-rm -rf /tmp/SpeedMonitor.app
-echo "Step 6: Launching..."
-open /Applications/SpeedMonitor.app
-echo "=== Update complete ==="
-"""
+            let downloadProcess = Process()
+            downloadProcess.executableURL = URL(fileURLWithPath: "/bin/bash")
+            downloadProcess.arguments = ["-c", downloadScript]
 
             do {
-                // Write script to file
-                try scriptContent.write(toFile: scriptPath, atomically: true, encoding: .utf8)
+                try downloadProcess.run()
+                downloadProcess.waitUntilExit()
 
-                // Make executable
-                let chmodProcess = Process()
-                chmodProcess.executableURL = URL(fileURLWithPath: "/bin/chmod")
-                chmodProcess.arguments = ["+x", scriptPath]
-                try chmodProcess.run()
-                chmodProcess.waitUntilExit()
+                if downloadProcess.terminationStatus != 0 {
+                    DispatchQueue.main.async {
+                        self?.isUpdating = false
+                    }
+                    return
+                }
 
-                // Run the script
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: scriptPath)
-                try process.run()
-                process.waitUntilExit()
+                // Step 2: Install with admin privileges (triggers Touch ID / password prompt)
+                let installScript = """
+                rm -rf /Applications/SpeedMonitor.app && \
+                cp -r /tmp/SpeedMonitor.app /Applications/ && \
+                chown -R root:wheel /Applications/SpeedMonitor.app && \
+                rm -f /tmp/SpeedMonitor.app.zip && \
+                rm -rf /tmp/SpeedMonitor.app
+                """
 
-                if process.terminationStatus == 0 {
-                    // Exit this instance - new app launched via 'open'
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                        NSApplication.shared.terminate(nil)
+                // Use osascript with administrator privileges - this shows Touch ID / password dialog
+                let appleScript = """
+                do shell script "\(installScript)" with administrator privileges
+                """
+
+                let scriptProcess = Process()
+                scriptProcess.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+                scriptProcess.arguments = ["-e", appleScript]
+
+                try scriptProcess.run()
+                scriptProcess.waitUntilExit()
+
+                if scriptProcess.terminationStatus == 0 {
+                    // Success - launch new app and quit this instance
+                    DispatchQueue.main.async {
+                        // Launch the new app
+                        NSWorkspace.shared.openApplication(
+                            at: URL(fileURLWithPath: "/Applications/SpeedMonitor.app"),
+                            configuration: NSWorkspace.OpenConfiguration()
+                        ) { _, _ in
+                            // Quit this instance
+                            NSApplication.shared.terminate(nil)
+                        }
                     }
                 } else {
-                    let logContent = (try? String(contentsOfFile: logPath)) ?? "No log"
-                    print("Update failed (exit \(process.terminationStatus)):\n\(logContent)")
+                    // User cancelled or error
                     DispatchQueue.main.async {
                         self?.isUpdating = false
                     }
                 }
             } catch {
-                print("Failed to update app: \(error)")
-                // Write error to log for debugging
-                try? "Error: \(error)".write(toFile: logPath, atomically: true, encoding: .utf8)
+                print("Update failed: \(error)")
                 DispatchQueue.main.async {
                     self?.isUpdating = false
                 }
@@ -560,14 +561,17 @@ echo "=== Update complete ==="
     func checkInstallation() {
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let brewPath = Self.runCommand("/usr/bin/which brew")
-            let speedtestPath = Self.runCommand("/bin/bash -c 'export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH && which speedtest-cli'")
-            let scriptExists = FileManager.default.fileExists(atPath: NSHomeDirectory() + "/.local/bin/speed_monitor.sh")
+            // Check for speedtest-cli in common locations including package install path
+            let speedtestPath = Self.runCommand("/bin/bash -c 'export PATH=$HOME/.local/bin:/usr/local/speedmonitor/bin:/opt/homebrew/bin:/usr/local/bin:$PATH && which speedtest-cli'")
+            // Check both symlink location and package install location
+            let scriptExistsSymlink = FileManager.default.fileExists(atPath: NSHomeDirectory() + "/.local/bin/speed_monitor.sh")
+            let scriptExistsPackage = FileManager.default.fileExists(atPath: "/usr/local/speedmonitor/bin/speed_monitor.sh")
             let launchdStatus = Self.runCommand("/bin/launchctl list | /usr/bin/grep speedmonitor")
 
             DispatchQueue.main.async {
                 self?.hasHomebrew = !brewPath.isEmpty && !brewPath.contains("not found")
                 self?.hasSpeedtest = !speedtestPath.isEmpty && !speedtestPath.contains("not found")
-                self?.hasScript = scriptExists
+                self?.hasScript = scriptExistsSymlink || scriptExistsPackage
                 self?.hasLaunchd = !launchdStatus.isEmpty
             }
         }
