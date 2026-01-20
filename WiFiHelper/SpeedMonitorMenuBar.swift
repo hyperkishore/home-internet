@@ -77,9 +77,42 @@ class WiFiManager: ObservableObject {
     @Published var channel: Int = 0
     @Published var band: String = ""
     @Published var bssid: String = ""
+    @Published var apName: String = ""
     @Published var txRate: Double = 0
     @Published var noise: Int = 0
     @Published var isConnected: Bool = false
+
+    // AP name mapping based on BSSID prefix (first 5 bytes) to handle multiple virtual APs
+    private let apPrefixMap: [String: String] = [
+        "a8:ba:25:ce:a4:d": "2F-AP_1", "a8:ba:25:6a:4d": "2F-AP_1",   // 2F-AP_1
+        "a8:ba:25:ce:a1:a": "2F-AP_2", "a8:ba:25:6a:1a": "2F-AP_2",   // 2F-AP_2
+        "a8:ba:25:ce:a1:2": "2F-AP_3", "a8:ba:25:6a:12": "2F-AP_3",   // 2F-AP_3
+        "a8:ba:25:ce:a2:3": "2F-AP_4", "a8:ba:25:6a:23": "2F-AP_4",   // 2F-AP_4
+        "a8:ba:25:ce:a3:e": "2F-AP_5", "a8:ba:25:6a:3e": "2F-AP_5",   // 2F-AP_5
+        "a8:ba:25:ce:a1:c": "3F-AP_5", "a8:ba:25:6a:1c": "3F-AP_5",   // 3F-AP_5
+        "a8:ba:25:ce:9f:5": "3F-AP-1", "a8:ba:25:69:f5": "3F-AP-1",   // 3F-AP-1
+        "a8:ba:25:ce:9f:0": "3F-AP-2", "a8:ba:25:69:f0": "3F-AP-2",   // 3F-AP-2
+        "a8:ba:25:ce:a4:6": "3F-AP-3", "a8:ba:25:6a:46": "3F-AP-3",   // 3F-AP-3
+        "a8:ba:25:ce:a4:e": "3F-AP-4", "a8:ba:25:6a:4e": "3F-AP-4"    // 3F-AP-4
+    ]
+
+    // Lookup AP name by BSSID prefix (first 5 bytes)
+    func lookupAPName(_ bssid: String) -> String {
+        let lowerBssid = bssid.lowercased()
+        // Try prefix match (first 14 chars = "aa:bb:cc:dd:ee")
+        let prefix = String(lowerBssid.prefix(14))
+        if let name = apPrefixMap[prefix] {
+            return name
+        }
+        // Try shorter prefix (first 13 chars for single hex digit in 5th byte)
+        let shortPrefix = String(lowerBssid.prefix(13))
+        for (key, name) in apPrefixMap {
+            if key.hasPrefix(shortPrefix) || shortPrefix.hasPrefix(key) {
+                return name
+            }
+        }
+        return ""
+    }
 
     func refresh() {
         let client = CWWiFiClient.shared()
@@ -91,6 +124,7 @@ class WiFiManager: ObservableObject {
         isConnected = interface.ssid() != nil
         ssid = interface.ssid() ?? "Not Connected"
         bssid = interface.bssid() ?? "N/A"
+        apName = lookupAPName(bssid)
         rssi = interface.rssiValue()
         noise = interface.noiseMeasurement()
         txRate = interface.transmitRate()
@@ -503,7 +537,7 @@ class SpeedDataManager: ObservableObject {
         checkForUpdate()
     }
 
-    static let appVersion = "3.1.20"
+    static let appVersion = "3.1.21"
 
     func checkForUpdate() {
         let versionURL = URL(string: "https://home-internet-production.up.railway.app/api/version")!
@@ -1150,6 +1184,20 @@ struct MenuBarView: View {
                 }
 
                 if locationManager.isAuthorized && wifiManager.isConnected {
+                    HStack {
+                        Text("Access Point:")
+                        Spacer()
+                        if !wifiManager.apName.isEmpty {
+                            Text(wifiManager.apName)
+                                .fontWeight(.medium)
+                        } else {
+                            Text(wifiManager.bssid)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(.leading, 24)
+
                     HStack {
                         Text("Signal:")
                         Spacer()

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.speedmonitor.menubar</string>
+    <key>CFBundleName</key>
+    <string>Speed Monitor</string>
+    <key>CFBundleDisplayName</key>
+    <string>Speed Monitor</string>
+    <key>CFBundleVersion</key>
+    <string>3.1.18</string>
+    <key>CFBundleShortVersionString</key>
+    <string>3.1.18</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleExecutable</key>
+    <string>SpeedMonitor</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>12.0</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.utilities</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSLocationUsageDescription</key>
+    <string>Speed Monitor needs Location Services to detect your WiFi network name (SSID). This is required by macOS. Your location is never tracked or stored.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Speed Monitor needs Location Services to detect your WiFi network name (SSID). This is required by macOS. Your location is never tracked or stored.</string>
+    <key>NSLocationAlwaysUsageDescription</key>
+    <string>Speed Monitor needs Location Services to detect your WiFi network name (SSID). This is required by macOS. Your location is never tracked or stored.</string>
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    <string>Speed Monitor needs Location Services to detect your WiFi network name (SSID). This is required by macOS. Your location is never tracked or stored.</string>
+</dict>
+</plist>

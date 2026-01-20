@@ -1,0 +1,20 @@
+Installation Complete!
+
+Speed Monitor is now running on your Mac.
+
+Next steps:
+1. Look for the SpeedMonitor icon in your menu bar (top right)
+2. Click it to see your WiFi and speed stats
+3. Click "Settings" to grant Location Services permission
+4. Speed tests will run automatically every 10 minutes
+
+View your speed history:
+Open your web browser and go to the dashboard URL
+(your IT admin will provide this)
+
+Troubleshooting:
+• If no menu bar icon appears, open /Applications/SpeedMonitor.app
+• View logs: ~/.local/share/nkspeedtest/speed_monitor.log
+• System logs: /var/log/speedmonitor-install.log
+
+For support, contact your IT administrator.

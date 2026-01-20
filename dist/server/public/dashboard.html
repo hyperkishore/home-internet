@@ -3076,7 +3076,7 @@
                                     <td>
                                         <div class="wifi-ssid">
                                             <div class="ssid-name">${ap.ssid || 'Unknown'}</div>
-                                            <div class="bssid">${ap.bssid || 'N/A'}</div>
+                                            <div class="bssid">${ap.ap_name ? `<strong style="color: #3b82f6;">${ap.ap_name}</strong> (${ap.bssid})` : (ap.bssid || 'N/A')}</div>
                                         </div>
                                     </td>
                                     <td>

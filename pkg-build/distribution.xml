@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>Speed Monitor</title>
+    <welcome file="welcome.txt"/>
+    <conclusion file="conclusion.txt"/>
+    <pkg-ref id="com.speedmonitor.pkg"/>
+    <options customize="never" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+    <choices-outline>
+        <line choice="default">
+            <line choice="com.speedmonitor.pkg"/>
+        </line>
+    </choices-outline>
+    <choice id="default"/>
+    <choice id="com.speedmonitor.pkg" visible="false">
+        <pkg-ref id="com.speedmonitor.pkg"/>
+    </choice>
+    <pkg-ref id="com.speedmonitor.pkg" version="3.1.0" onConclusion="none">component.pkg</pkg-ref>
+</installer-gui-script>

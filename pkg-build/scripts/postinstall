@@ -1,0 +1,286 @@
+#!/bin/bash
+#
+# Postinstall script - runs after package installation
+# Sets up Homebrew, installs dependencies, configures per-user settings
+#
+
+# Don't exit on errors - try to install as much as possible
+set +e
+
+LOG_FILE="/var/log/speedmonitor-install.log"
+INSTALL_DIR="/usr/local/speedmonitor"
+
+log() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
+}
+
+log "=== Speed Monitor Postinstall Starting ==="
+
+# Load configuration
+if [ -f "${INSTALL_DIR}/lib/config.sh" ]; then
+    source "${INSTALL_DIR}/lib/config.sh"
+    log "Configuration loaded from config.sh"
+fi
+
+# Install Homebrew if not present (system-wide)
+CURRENT_USER=$(stat -f "%Su" /dev/console)
+HOMEBREW_PREFIX=""
+
+# Detect architecture and set Homebrew prefix
+if [[ $(uname -m) == "arm64" ]]; then
+    HOMEBREW_PREFIX="/opt/homebrew"
+else
+    HOMEBREW_PREFIX="/usr/local"
+fi
+
+log "Detected Homebrew prefix: $HOMEBREW_PREFIX"
+
+# Check if Homebrew is already installed
+if [ -f "${HOMEBREW_PREFIX}/bin/brew" ]; then
+    log "Homebrew already installed at ${HOMEBREW_PREFIX}"
+    export PATH="${HOMEBREW_PREFIX}/bin:$PATH"
+else
+    log "Installing Homebrew for user: $CURRENT_USER..."
+
+    # Create Homebrew directory with correct ownership
+    if [ ! -d "$HOMEBREW_PREFIX" ]; then
+        log "Creating $HOMEBREW_PREFIX directory..."
+        mkdir -p "$HOMEBREW_PREFIX"
+        chown -R "$CURRENT_USER:staff" "$HOMEBREW_PREFIX"
+    else
+        log "Fixing ownership of $HOMEBREW_PREFIX..."
+        chown -R "$CURRENT_USER:staff" "$HOMEBREW_PREFIX"
+    fi
+
+    # Download and run Homebrew installer in non-interactive mode
+    HOMEBREW_INSTALL_LOG="/var/log/homebrew-install-$$.log"
+    log "Installing Homebrew (this may take 5-10 minutes)..."
+
+    # Run installer as user with non-interactive flag
+    if sudo -u "$CURRENT_USER" /bin/bash -c "NONINTERACTIVE=1 CI=1 /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"" > "$HOMEBREW_INSTALL_LOG" 2>&1; then
+        log "Homebrew installation command completed"
+    else
+        log "WARNING: Homebrew installation returned non-zero exit code"
+        log "Check log: $HOMEBREW_INSTALL_LOG"
+    fi
+
+    # Verify installation
+    if [ -f "${HOMEBREW_PREFIX}/bin/brew" ]; then
+        log "SUCCESS: Homebrew installed at ${HOMEBREW_PREFIX}"
+        export PATH="${HOMEBREW_PREFIX}/bin:$PATH"
+
+        # Fix any permission issues
+        log "Setting correct permissions..."
+        chown -R "$CURRENT_USER:staff" "${HOMEBREW_PREFIX}"
+        chmod -R u+w "${HOMEBREW_PREFIX}"
+
+        # Verify brew command works
+        BREW_VERSION=$(sudo -u "$CURRENT_USER" "${HOMEBREW_PREFIX}/bin/brew" --version 2>&1 | head -1)
+        log "Homebrew version: $BREW_VERSION"
+    else
+        log "ERROR: Homebrew installation failed - ${HOMEBREW_PREFIX}/bin/brew not found"
+        log "Installation log saved to: $HOMEBREW_INSTALL_LOG"
+        log "Will continue without Homebrew - speedtest-cli must be installed manually"
+    fi
+fi
+
+# Install speedtest-cli
+log "Installing speedtest-cli..."
+
+if [ -f "${HOMEBREW_PREFIX}/bin/brew" ]; then
+    # Check if already installed
+    if sudo -u "$CURRENT_USER" "${HOMEBREW_PREFIX}/bin/brew" list speedtest-cli &> /dev/null; then
+        log "speedtest-cli already installed"
+    else
+        log "Installing speedtest-cli via Homebrew..."
+        # Install speedtest-cli
+        if sudo -u "$CURRENT_USER" "${HOMEBREW_PREFIX}/bin/brew" install speedtest-cli 2>&1 | tee -a "$LOG_FILE"; then
+            log "speedtest-cli installed successfully"
+        else
+            log "WARNING: Failed to install speedtest-cli"
+            log "User can install manually later: brew install speedtest-cli"
+        fi
+    fi
+
+    # Verify installation
+    if [ -f "${HOMEBREW_PREFIX}/bin/speedtest-cli" ]; then
+        SPEEDTEST_VERSION=$(sudo -u "$CURRENT_USER" "${HOMEBREW_PREFIX}/bin/speedtest-cli" --version 2>&1 | head -1)
+        log "speedtest-cli verified: $SPEEDTEST_VERSION at ${HOMEBREW_PREFIX}/bin/speedtest-cli"
+
+        # Create symlink in user PATH
+        sudo -u "$CURRENT_USER" ln -sf "${HOMEBREW_PREFIX}/bin/speedtest-cli" "$HOME/.local/bin/speedtest-cli" 2>/dev/null || true
+    else
+        log "WARNING: speedtest-cli binary not found at ${HOMEBREW_PREFIX}/bin/speedtest-cli"
+    fi
+else
+    log "WARNING: Homebrew not available - skipping speedtest-cli installation"
+    log "Please install manually: brew install speedtest-cli"
+fi
+
+# Compile Swift helper (wifi_info)
+log "Compiling Swift helper..."
+if command -v swiftc &> /dev/null; then
+    if swiftc -O -o "${INSTALL_DIR}/bin/wifi_info" \
+              "${INSTALL_DIR}/lib/wifi_info.swift" \
+              -framework CoreWLAN -framework Foundation 2>&1 | tee -a "$LOG_FILE"; then
+        chmod +x "${INSTALL_DIR}/bin/wifi_info"
+        log "Swift helper compiled successfully"
+    else
+        log "WARNING: Swift helper compilation failed - will use fallback methods"
+    fi
+else
+    log "WARNING: swiftc not available - Swift helper not compiled"
+fi
+
+# Build SpeedMonitor.app if source exists
+if [ -f "${INSTALL_DIR}/lib/SpeedMonitorMenuBar.swift" ]; then
+    log "Building SpeedMonitor.app..."
+
+    # Create app bundle structure
+    mkdir -p "${INSTALL_DIR}/lib/SpeedMonitor.app/Contents/MacOS"
+    mkdir -p "${INSTALL_DIR}/lib/SpeedMonitor.app/Contents/Resources"
+
+    # Compile Swift app (with -parse-as-library to fix @main attribute error)
+    if swiftc -parse-as-library \
+              -o "${INSTALL_DIR}/lib/SpeedMonitor.app/Contents/MacOS/SpeedMonitor" \
+              "${INSTALL_DIR}/lib/SpeedMonitorMenuBar.swift" \
+              -framework SwiftUI -framework CoreWLAN -framework CoreLocation -framework AppKit 2>&1 | tee -a "$LOG_FILE"; then
+
+        # Create Info.plist
+        cat > "${INSTALL_DIR}/lib/SpeedMonitor.app/Contents/Info.plist" << 'PLIST_EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>SpeedMonitor</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.speedmonitor.menubar</string>
+    <key>CFBundleName</key>
+    <string>SpeedMonitor</string>
+    <key>CFBundleVersion</key>
+    <string>3.1.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>SpeedMonitor needs location access to display your WiFi network name (SSID).</string>
+</dict>
+</plist>
+PLIST_EOF
+
+        log "SpeedMonitor.app built successfully"
+    else
+        log "WARNING: SpeedMonitor.app build failed"
+    fi
+fi
+
+# Set up for all users
+log "Setting up Speed Monitor for all users..."
+
+for user_home in /Users/*; do
+    if [ ! -d "$user_home" ]; then
+        continue
+    fi
+
+    username=$(basename "$user_home")
+
+    # Skip system users
+    if [ "$username" = "Shared" ] || [ "$username" = "Guest" ]; then
+        continue
+    fi
+
+    log "Configuring for user: $username"
+
+    # Create directories
+    sudo -u "$username" mkdir -p "$user_home/${USER_DATA_DIR}"
+    sudo -u "$username" mkdir -p "$user_home/${USER_CONFIG_DIR}"
+    sudo -u "$username" mkdir -p "$user_home/${USER_BIN_DIR}"
+    sudo -u "$username" mkdir -p "$user_home/Library/LaunchAgents"
+
+    # Link scripts to user bin
+    sudo -u "$username" ln -sf "${INSTALL_DIR}/bin/speed_monitor.sh" "$user_home/${USER_BIN_DIR}/speed_monitor.sh"
+    sudo -u "$username" ln -sf "${INSTALL_DIR}/bin/wifi_info" "$user_home/${USER_BIN_DIR}/wifi_info" 2>/dev/null || true
+
+    # Generate device ID if not exists
+    if [ ! -f "$user_home/${USER_CONFIG_DIR}/device_id" ]; then
+        # Use hardware UUID for stable device ID
+        hw_uuid=$(ioreg -rd1 -c IOPlatformExpertDevice | awk '/IOPlatformUUID/ { print $3 }' | tr -d '"')
+        device_id=$(echo "$hw_uuid-$username" | shasum -a 256 | cut -c1-16)
+        echo "$device_id" | sudo -u "$username" tee "$user_home/${USER_CONFIG_DIR}/device_id" > /dev/null
+        log "Generated device ID for $username: $device_id"
+    fi
+
+    # Prompt for email (interactive mode only)
+    if [ -t 0 ] && [ ! -f "$user_home/${USER_CONFIG_DIR}/user_email" ]; then
+        echo ""
+        echo "Enter email for $username (or press Enter to skip):"
+        read -r user_email
+        if [ -n "$user_email" ]; then
+            echo "$user_email" | sudo -u "$username" tee "$user_home/${USER_CONFIG_DIR}/user_email" > /dev/null
+            log "Email saved for $username: $user_email"
+        fi
+    fi
+
+    # Create LaunchAgent plist from template
+    cat > "$user_home/Library/LaunchAgents/com.speedmonitor.plist" << PLIST_EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.speedmonitor</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>$user_home/${USER_BIN_DIR}/speed_monitor.sh</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>600</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>$user_home/${USER_DATA_DIR}/launchd_stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>$user_home/${USER_DATA_DIR}/launchd_stderr.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>SPEED_MONITOR_SERVER</key>
+        <string>${SERVER_URL}</string>
+    </dict>
+</dict>
+</plist>
+PLIST_EOF
+
+    chown "$username" "$user_home/Library/LaunchAgents/com.speedmonitor.plist"
+    log "Created LaunchAgent for $username"
+
+    # Load LaunchAgent (only if user is logged in)
+    if pgrep -u "$username" &> /dev/null; then
+        sudo -u "$username" launchctl load "$user_home/Library/LaunchAgents/com.speedmonitor.plist" 2>/dev/null || true
+        log "Loaded LaunchAgent for $username"
+    else
+        log "User $username not logged in - LaunchAgent will load on next login"
+    fi
+
+    # Copy SpeedMonitor.app to user's Applications
+    if [ -d "${INSTALL_DIR}/lib/SpeedMonitor.app" ]; then
+        sudo -u "$username" cp -r "${INSTALL_DIR}/lib/SpeedMonitor.app" "$user_home/Applications/" 2>/dev/null || \
+        cp -r "${INSTALL_DIR}/lib/SpeedMonitor.app" "/Applications/"
+        log "Installed SpeedMonitor.app for $username"
+    fi
+done
+
+# Run initial speed test for console user
+CURRENT_USER=$(stat -f "%Su" /dev/console)
+if [ -f "/Users/${CURRENT_USER}/${USER_BIN_DIR}/speed_monitor.sh" ]; then
+    log "Running initial speed test for $CURRENT_USER..."
+    sudo -u "$CURRENT_USER" "/Users/${CURRENT_USER}/${USER_BIN_DIR}/speed_monitor.sh" &
+fi
+
+log "=== Postinstall Complete ==="
+log "Speed Monitor installed successfully!"
+log "Dashboard: ${SERVER_URL}"
+log "Logs: $LOG_FILE"
+
+exit 0

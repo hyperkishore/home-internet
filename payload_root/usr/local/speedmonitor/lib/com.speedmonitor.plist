@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.speedmonitor</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/kishore/Desktop/Claude-experiments/home-internet/speed_monitor.sh</string>
+    </array>
+
+    <key>StartInterval</key>
+    <integer>600</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/kishore/.local/share/nkspeedtest/launchd_stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/kishore/.local/share/nkspeedtest/launchd_stderr.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>SPEED_MONITOR_SERVER</key>
+        <string>https://home-internet-production.up.railway.app</string>
+    </dict>
+</dict>
+</plist>

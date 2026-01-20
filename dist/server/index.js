@@ -4,7 +4,38 @@ const cors = require('cors');
 const path = require('path');
 const rateLimit = require('express-rate-limit');
 
-const APP_VERSION = '3.1.20';
+const APP_VERSION = '3.1.21';
+
+// AP name mapping based on BSSID prefix (first 5 bytes) to handle multiple virtual APs
+const AP_PREFIX_MAP = {
+  'a8:ba:25:ce:a4:d': '2F-AP_1', 'a8:ba:25:6a:4d': '2F-AP_1',   // 2F-AP_1
+  'a8:ba:25:ce:a1:a': '2F-AP_2', 'a8:ba:25:6a:1a': '2F-AP_2',   // 2F-AP_2
+  'a8:ba:25:ce:a1:2': '2F-AP_3', 'a8:ba:25:6a:12': '2F-AP_3',   // 2F-AP_3
+  'a8:ba:25:ce:a2:3': '2F-AP_4', 'a8:ba:25:6a:23': '2F-AP_4',   // 2F-AP_4
+  'a8:ba:25:ce:a3:e': '2F-AP_5', 'a8:ba:25:6a:3e': '2F-AP_5',   // 2F-AP_5
+  'a8:ba:25:ce:a1:c': '3F-AP_5', 'a8:ba:25:6a:1c': '3F-AP_5',   // 3F-AP_5
+  'a8:ba:25:ce:9f:5': '3F-AP-1', 'a8:ba:25:69:f5': '3F-AP-1',   // 3F-AP-1
+  'a8:ba:25:ce:9f:0': '3F-AP-2', 'a8:ba:25:69:f0': '3F-AP-2',   // 3F-AP-2
+  'a8:ba:25:ce:a4:6': '3F-AP-3', 'a8:ba:25:6a:46': '3F-AP-3',   // 3F-AP-3
+  'a8:ba:25:ce:a4:e': '3F-AP-4', 'a8:ba:25:6a:4e': '3F-AP-4'    // 3F-AP-4
+};
+
+// Lookup AP name by BSSID prefix
+function lookupAPName(bssid) {
+  if (!bssid) return null;
+  const lower = bssid.toLowerCase();
+  // Try prefix match (first 14 chars = "aa:bb:cc:dd:ee")
+  const prefix14 = lower.substring(0, 14);
+  if (AP_PREFIX_MAP[prefix14]) return AP_PREFIX_MAP[prefix14];
+  // Try shorter prefix (first 13 chars)
+  const prefix13 = lower.substring(0, 13);
+  for (const [key, name] of Object.entries(AP_PREFIX_MAP)) {
+    if (key.startsWith(prefix13) || prefix13.startsWith(key)) {
+      return name;
+    }
+  }
+  return null;
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -599,7 +630,13 @@ app.get('/api/stats/wifi', (req, res) => {
       GROUP BY band
     `).all();
 
-    res.json({ byAccessPoint, bySSID, bandDistribution });
+    // Add AP names to the byAccessPoint results using prefix matching
+    const byAccessPointWithNames = byAccessPoint.map(ap => ({
+      ...ap,
+      ap_name: lookupAPName(ap.bssid)
+    }));
+
+    res.json({ byAccessPoint: byAccessPointWithNames, bySSID, bandDistribution });
   } catch (err) {
     console.error('Error fetching WiFi stats:', err);
     res.status(500).json({ error: 'Failed to fetch WiFi stats' });

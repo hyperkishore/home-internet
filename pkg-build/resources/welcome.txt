@@ -1,0 +1,18 @@
+Speed Monitor Installation
+
+This installer will set up automated internet speed monitoring on your Mac.
+
+What will be installed:
+• Speed Monitor scripts (collects WiFi and speed test data)
+• Homebrew package manager (if not already installed)
+• speedtest-cli (for speed testing)
+• LaunchAgent (runs tests every 10 minutes)
+• SpeedMonitor menu bar app (displays real-time stats)
+
+After installation:
+1. Grant Location Services permission when prompted
+   (required to see WiFi network name)
+2. Check menu bar for SpeedMonitor icon
+3. Speed tests will run automatically every 10 minutes
+
+For support, contact your IT administrator.

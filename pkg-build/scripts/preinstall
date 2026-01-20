@@ -1,0 +1,73 @@
+#!/bin/bash
+#
+# Preinstall script - runs before package installation
+# Checks requirements and installs dependencies
+#
+
+set -e
+
+LOG_FILE="/var/log/speedmonitor-install.log"
+
+log() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
+}
+
+log "=== Speed Monitor Preinstall Starting ==="
+
+# Check macOS version
+OS_VERSION=$(sw_vers -productVersion)
+OS_MAJOR=$(echo "$OS_VERSION" | cut -d'.' -f1)
+
+log "macOS version: $OS_VERSION"
+
+if [ "$OS_MAJOR" -lt 11 ]; then
+    log "ERROR: macOS 11 (Big Sur) or later required"
+    exit 1
+fi
+
+# Check if Homebrew is installed
+log "Checking for Homebrew..."
+if ! command -v brew &> /dev/null; then
+    log "Homebrew not found - will install in postinstall"
+else
+    log "Homebrew found at: $(which brew)"
+fi
+
+# Check for Xcode Command Line Tools (required for Swift compilation)
+log "Checking for Xcode Command Line Tools..."
+if ! xcode-select -p &> /dev/null; then
+    log "Installing Xcode Command Line Tools (this may take a few minutes)..."
+    # Trigger installation
+    xcode-select --install 2>/dev/null || true
+
+    # Wait for installation (with timeout)
+    TIMEOUT=300
+    ELAPSED=0
+    while ! xcode-select -p &> /dev/null; do
+        if [ $ELAPSED -ge $TIMEOUT ]; then
+            log "WARNING: Xcode CLT installation timeout - continuing anyway"
+            break
+        fi
+        sleep 5
+        ELAPSED=$((ELAPSED + 5))
+    done
+fi
+
+if xcode-select -p &> /dev/null; then
+    log "Xcode Command Line Tools found at: $(xcode-select -p)"
+else
+    log "WARNING: Xcode CLT not available - Swift helper may not compile"
+fi
+
+# Check disk space (need ~500MB for Homebrew + speedtest-cli)
+AVAILABLE_KB=$(df -k /usr/local 2>/dev/null | tail -1 | awk '{print $4}')
+AVAILABLE_MB=$((AVAILABLE_KB / 1024))
+
+log "Available disk space: ${AVAILABLE_MB}MB"
+
+if [ "$AVAILABLE_MB" -lt 500 ]; then
+    log "WARNING: Low disk space (${AVAILABLE_MB}MB available, 500MB recommended)"
+fi
+
+log "=== Preinstall Complete ==="
+exit 0
