@@ -205,6 +205,39 @@ log() {
 
 log "=== Speed Monitor Postinstall Starting ==="
 
+# === FULL CLEANUP: Remove ALL old installations first ===
+log "Cleaning up old installations..."
+
+# Stop any running launchd services for all users
+for user_home in /Users/*; do
+    username=$(basename "$user_home")
+    if [ "$username" = "Shared" ] || [ "$username" = "Guest" ]; then
+        continue
+    fi
+    if [ -f "$user_home/Library/LaunchAgents/com.speedmonitor.plist" ]; then
+        sudo -u "$username" launchctl unload "$user_home/Library/LaunchAgents/com.speedmonitor.plist" 2>/dev/null || true
+    fi
+    if [ -f "$user_home/Library/LaunchAgents/com.speedmonitor.menubar.plist" ]; then
+        sudo -u "$username" launchctl unload "$user_home/Library/LaunchAgents/com.speedmonitor.menubar.plist" 2>/dev/null || true
+    fi
+    # Remove old scripts from user bin
+    rm -f "$user_home/.local/bin/speed_monitor.sh" 2>/dev/null || true
+    rm -f "$user_home/.local/bin/wifi_info" 2>/dev/null || true
+    rm -f "$user_home/.local/bin/speedtest-cli" 2>/dev/null || true
+done
+
+# Remove old PKG installation files
+if [ -d "/usr/local/speedmonitor/bin" ]; then
+    log "Removing old PKG installation files..."
+    rm -f /usr/local/speedmonitor/bin/speed_monitor.sh 2>/dev/null || true
+    rm -f /usr/local/speedmonitor/bin/wifi_info 2>/dev/null || true
+fi
+
+# Remove old SpeedMonitor.app
+rm -rf /Applications/SpeedMonitor.app 2>/dev/null || true
+
+log "Old installations cleaned up"
+
 # Load configuration
 if [ -f "${INSTALL_DIR}/lib/config.sh" ]; then
     source "${INSTALL_DIR}/lib/config.sh"
