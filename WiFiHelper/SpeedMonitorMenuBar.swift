@@ -414,7 +414,7 @@ class SpeedDataManager: ObservableObject {
             process.environment = [
                 "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
                 "HOME": NSHomeDirectory(),
-                "SPEED_MONITOR_SERVER": "https://home-internet-production.up.railway.app"
+                "SPEED_MONITOR_SERVER": "https://home-internet.onrender.com"
             ]
 
             // Capture output for debugging
@@ -829,7 +829,7 @@ class SpeedDataManager: ObservableObject {
             }
 
             // POST to server
-            guard let url = URL(string: "https://home-internet-production.up.railway.app/api/diagnostics"),
+            guard let url = URL(string: "https://home-internet.onrender.com/api/diagnostics"),
                   let jsonData = jsonOutput.data(using: .utf8) else {
                 DispatchQueue.main.async {
                     self?.isSubmittingDiagnostics = false
@@ -1204,7 +1204,7 @@ struct SettingsView: View {
                     HStack {
                         Text("Dashboard:")
                         Spacer()
-                        Link("Open Dashboard", destination: URL(string: "https://home-internet-production.up.railway.app/")!)
+                        Link("Open Dashboard", destination: URL(string: "https://home-internet.onrender.com/")!)
                     }
                 }
                 .padding(.vertical, 8)
@@ -1492,7 +1492,7 @@ struct MenuBarView: View {
             .buttonStyle(.plain)
 
             Button(action: {
-                if let url = URL(string: "https://home-internet-production.up.railway.app/") {
+                if let url = URL(string: "https://home-internet.onrender.com/") {
                     NSWorkspace.shared.open(url)
                 }
             }) {

@@ -1,12 +1,12 @@
 #!/bin/bash
 # Speed Monitor v3.1.29 - One-line installer for employees
-# Install:   bash <(curl -fsSL https://home-internet-production.up.railway.app/install.sh)
-# Uninstall: bash <(curl -fsSL https://home-internet-production.up.railway.app/uninstall.sh)
+# Install:   bash <(curl -fsSL https://home-internet.onrender.com/install.sh)
+# Uninstall: bash <(curl -fsSL https://home-internet.onrender.com/uninstall.sh)
 
 set -e
 
-SERVER_URL="https://home-internet-production.up.railway.app"
-DOWNLOAD_URL="$SERVER_URL"  # Files hosted on Railway server
+SERVER_URL="https://home-internet.onrender.com"
+DOWNLOAD_URL="$SERVER_URL"  # Files hosted on Render server
 SCRIPT_DIR="$HOME/.local/share/nkspeedtest"
 CONFIG_DIR="$HOME/.config/nkspeedtest"
 BIN_DIR="$HOME/.local/bin"

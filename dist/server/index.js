@@ -1256,7 +1256,7 @@ async function sendSlackAlert(webhookUrl, deviceId, alertType, message, severity
             {
               type: 'context',
               elements: [
-                { type: 'mrkdwn', text: `🕐 ${new Date().toISOString()} | <https://home-internet-production.up.railway.app|View Dashboard>` }
+                { type: 'mrkdwn', text: `🕐 ${new Date().toISOString()} | <https://home-internet.onrender.com|View Dashboard>` }
               ]
             }
           ]
