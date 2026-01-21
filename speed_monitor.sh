@@ -9,7 +9,7 @@
 # v2.1.0: Added WiFi debugging metrics (MCS, error rates, BSSID tracking)
 #
 
-APP_VERSION="3.1.28"
+APP_VERSION="3.1.29"
 
 # Configuration
 DATA_DIR="$HOME/.local/share/nkspeedtest"
@@ -215,13 +215,30 @@ get_device_id() {
     fi
 }
 
-# Get user email (set during installation)
+# Get user identifier (email if set, otherwise macOS username)
 get_user_email() {
     local email_file="$CONFIG_DIR/user_email"
-    if [[ -f "$email_file" ]]; then
+    if [[ -f "$email_file" ]] && [[ -s "$email_file" ]]; then
         cat "$email_file"
     else
-        echo ""
+        # Fallback: use macOS full name or username
+        local full_name=$(id -F 2>/dev/null || echo "")
+        if [[ -n "$full_name" ]]; then
+            echo "$full_name"
+        else
+            whoami
+        fi
+    fi
+}
+
+# Get hostname (computer name or hostname)
+get_hostname() {
+    # Try to get the friendly computer name first
+    local computer_name=$(scutil --get ComputerName 2>/dev/null || echo "")
+    if [[ -n "$computer_name" ]]; then
+        echo "$computer_name"
+    else
+        hostname -s 2>/dev/null || hostname
     fi
 }
 
@@ -678,15 +695,18 @@ json_escape() {
 # Build JSON payload
 build_json_payload() {
     local user_email=$(get_user_email)
+    local hostname=$(get_hostname)
     # Escape strings that might contain special characters
     local safe_ssid=$(json_escape "$SSID")
     local safe_vpn_name=$(json_escape "$VPN_NAME")
     local safe_errors=$(json_escape "$ERRORS")
+    local safe_hostname=$(json_escape "$hostname")
 
     local json="{"
     json+="\"timestamp_utc\":\"$TIMESTAMP_UTC\","
     json+="\"device_id\":\"$DEVICE_ID\","
     json+="\"user_email\":\"$user_email\","
+    json+="\"hostname\":\"$safe_hostname\","
     json+="\"os_version\":\"$OS_VERSION\","
     json+="\"app_version\":\"$APP_VERSION\","
     json+="\"timezone\":\"$TIMEZONE\","

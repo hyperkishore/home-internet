@@ -376,9 +376,13 @@ class SpeedDataManager: ObservableObject {
     }
 
     func runSpeedTest() {
-        guard !isRunningTest else { return }
+        print("[SpeedTest] runSpeedTest() called, isRunningTest=\(isRunningTest)")
+        guard !isRunningTest else {
+            print("[SpeedTest] Already running, ignoring")
+            return
+        }
         isRunningTest = true
-        testCountdown = 30  // Start countdown at 30 seconds
+        testCountdown = 60  // Increased to 60 seconds - speed tests can take longer
 
         // Start countdown timer on main thread
         countdownTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] timer in
@@ -390,19 +394,54 @@ class SpeedDataManager: ObservableObject {
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let scriptPath = NSHomeDirectory() + "/.local/bin/speed_monitor.sh"
+            print("[SpeedTest] Script path: \(scriptPath)")
+
+            // Check if script exists
+            if !FileManager.default.fileExists(atPath: scriptPath) {
+                print("[SpeedTest] ERROR: Script not found at \(scriptPath)")
+                DispatchQueue.main.async {
+                    self?.countdownTimer?.invalidate()
+                    self?.countdownTimer = nil
+                    self?.testCountdown = 0
+                    self?.isRunningTest = false
+                }
+                return
+            }
+
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/bash")
             process.arguments = [scriptPath]
             process.environment = [
                 "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+                "HOME": NSHomeDirectory(),
                 "SPEED_MONITOR_SERVER": "https://home-internet-production.up.railway.app"
             ]
 
+            // Capture output for debugging
+            let outputPipe = Pipe()
+            let errorPipe = Pipe()
+            process.standardOutput = outputPipe
+            process.standardError = errorPipe
+
             do {
+                print("[SpeedTest] Starting script...")
                 try process.run()
                 process.waitUntilExit()
+
+                let exitCode = process.terminationStatus
+                print("[SpeedTest] Script finished with exit code: \(exitCode)")
+
+                // Read output for debugging
+                let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+                let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                if let output = String(data: outputData, encoding: .utf8), !output.isEmpty {
+                    print("[SpeedTest] stdout: \(output.prefix(500))")
+                }
+                if let errorOutput = String(data: errorData, encoding: .utf8), !errorOutput.isEmpty {
+                    print("[SpeedTest] stderr: \(errorOutput.prefix(500))")
+                }
             } catch {
-                print("Failed to run speed test: \(error)")
+                print("[SpeedTest] Failed to run speed test: \(error)")
             }
 
             DispatchQueue.main.async {
@@ -411,6 +450,7 @@ class SpeedDataManager: ObservableObject {
                 self?.testCountdown = 0
                 self?.isRunningTest = false
                 self?.refresh()
+                print("[SpeedTest] Refresh complete")
             }
         }
     }
@@ -698,7 +738,7 @@ class SpeedDataManager: ObservableObject {
         checkForUpdate()
     }
 
-    static let appVersion = "3.1.28"
+    static let appVersion = "3.1.29"
 
     func checkForUpdate() {
         // Check version directly from GitHub (not Railway) to avoid deployment delays
@@ -1423,15 +1463,19 @@ struct MenuBarView: View {
 
             // Actions
             Button(action: {
+                print("[Button] Refresh button clicked, isRunningTest=\(speedData.isRunningTest)")
+
                 // Always check for updates immediately
                 speedData.checkForUpdate()
 
                 if speedData.isRunningTest {
                     // If already running, just refresh display
+                    print("[Button] Test already running, just refreshing display")
                     speedData.refresh()
                     wifiManager.refresh()
                 } else {
                     // Run speed test then refresh
+                    print("[Button] Starting new speed test")
                     speedData.runSpeedTest()
                     wifiManager.refresh()
                 }
