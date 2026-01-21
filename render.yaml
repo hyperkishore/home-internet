@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: speed-monitor
+    runtime: node
+    region: oregon
+    plan: free
+    rootDir: dist/server
+    buildCommand: npm install
+    startCommand: node index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1

@@ -54,10 +54,12 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/api/', limiter);
 
 // Initialize SQLite database with persistent storage
-// Railway provides RAILWAY_VOLUME_MOUNT_PATH for persistent volumes
+// Railway provides RAILWAY_VOLUME_MOUNT_PATH, Render uses /data disk mount
 const dbPath = process.env.RAILWAY_VOLUME_MOUNT_PATH
   ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'speed_monitor.db')
-  : (process.env.DB_PATH || './speed_monitor.db');
+  : process.env.RENDER && require('fs').existsSync('/data')
+    ? '/data/speed_monitor.db'
+    : (process.env.DB_PATH || './speed_monitor.db');
 console.log(`Database path: ${dbPath}`);
 const db = new Database(dbPath);
 
