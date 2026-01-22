@@ -5,7 +5,7 @@ const path = require('path');
 const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
 
-const APP_VERSION = '3.1.41';
+const APP_VERSION = "3.1.42";
 
 // Admin authentication configuration
 // Password is hashed using SHA-256 for security

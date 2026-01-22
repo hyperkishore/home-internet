@@ -226,6 +226,9 @@ class WiFiManager: ObservableObject {
             @unknown default: band = ""
             }
         }
+
+        // Save to cache file for speed_monitor.sh to read
+        saveToCache()
     }
 
     var signalBars: String {
@@ -261,6 +264,38 @@ class WiFiManager: ObservableObject {
         TX_RATE_MBPS=\(txRate)
         MCS_INDEX=-1
         """
+    }
+
+    // Save WiFi info to a cache file that speed_monitor.sh can read
+    // This allows the shell script to get WiFi info with Location Services permission
+    // from the running menu bar app instead of launching a new instance
+    func saveToCache() {
+        let cachePath = NSHomeDirectory() + "/.local/share/nkspeedtest/wifi_cache.txt"
+        let cacheDir = (cachePath as NSString).deletingLastPathComponent
+
+        // Create directory if needed
+        try? FileManager.default.createDirectory(atPath: cacheDir, withIntermediateDirectories: true)
+
+        let snr = rssi - noise
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let content = """
+        TIMESTAMP=\(timestamp)
+        INTERFACE=en0
+        POWER=on
+        CONNECTED=\(isConnected)
+        SSID=\(ssid)
+        BSSID=\(bssid)
+        RSSI_DBM=\(rssi)
+        NOISE_DBM=\(noise)
+        SNR_DB=\(snr)
+        CHANNEL=\(channel)
+        BAND=\(band)
+        WIDTH_MHZ=0
+        TX_RATE_MBPS=\(txRate)
+        MCS_INDEX=-1
+        """
+
+        try? content.write(toFile: cachePath, atomically: true, encoding: .utf8)
     }
 }
 
@@ -800,7 +835,7 @@ class SpeedDataManager: ObservableObject {
         checkForUpdate()
     }
 
-    static let appVersion = "3.1.41"
+    static let appVersion = "3.1.42"
 
     func checkForUpdate() {
         // Check version directly from GitHub to avoid deployment delays
