@@ -1531,7 +1531,7 @@
                 const response = await fetch('/api/stats');
                 const data = await response.json();
 
-                devices = data.devices || [];
+                devices = data.perDevice || [];
 
                 // Update stats
                 updateStats(data);
