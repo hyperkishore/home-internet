@@ -857,12 +857,13 @@ collect_metrics() {
     log "Detecting VPN status..."
     eval $(detect_vpn)
 
-    # Override VPN status if public IP is in Zscaler ranges
-    # This is more reliable than process detection for Zscaler
-    if is_zscaler_ip "$PUBLIC_IP"; then
+    # Use IP-based Zscaler detection as FALLBACK only
+    # Only override if process detection found NO VPN (avoids false positives
+    # when Zscaler process is running but tunnel is inactive)
+    if [[ "$VPN_STATUS" == "disconnected" ]] && is_zscaler_ip "$PUBLIC_IP"; then
         VPN_STATUS="connected"
         VPN_NAME="Zscaler"
-        log "Detected Zscaler via public IP: $PUBLIC_IP"
+        log "Detected Zscaler via public IP (fallback): $PUBLIC_IP"
     fi
 
     # MCS index and spatial streams (WiFi link quality)

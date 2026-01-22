@@ -1723,12 +1723,13 @@ app.post('/api/commands', async (req, res) => {
         commands: results
       });
     } else {
-      // Single device command
+      // Single device command - normalize device_id to lowercase for consistent matching
+      const normalizedDeviceId = device_id.toLowerCase();
       const result = await pool.query(`
         INSERT INTO device_commands (device_id, command, payload, created_by)
         VALUES ($1, $2, $3, $4)
         RETURNING id, device_id, command, status, created_at
-      `, [device_id, command, payload ? JSON.stringify(payload) : null, created_by || 'dashboard']);
+      `, [normalizedDeviceId, command, payload ? JSON.stringify(payload) : null, created_by || 'dashboard']);
 
       res.json({ success: true, command: result.rows[0] });
     }
@@ -1743,14 +1744,16 @@ app.post('/api/commands', async (req, res) => {
 app.get('/api/commands/:device_id', async (req, res) => {
   try {
     const { device_id } = req.params;
+    // Normalize to lowercase for case-insensitive matching
+    const normalizedDeviceId = device_id.toLowerCase();
 
     // Get pending commands for this device, mark them as acknowledged
     const commands = await pool.query(`
       UPDATE device_commands
       SET status = 'acknowledged', acknowledged_at = NOW()
-      WHERE device_id = $1 AND status = 'pending'
+      WHERE LOWER(device_id) = $1 AND status = 'pending'
       RETURNING id, command, payload, created_at
-    `, [device_id]);
+    `, [normalizedDeviceId]);
 
     // Also expire old pending commands (older than 1 hour)
     await pool.query(`

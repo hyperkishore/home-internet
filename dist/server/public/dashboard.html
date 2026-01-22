@@ -1529,6 +1529,9 @@
                 document.getElementById('refreshIcon').textContent = '⏳';
 
                 const response = await fetch('/api/stats');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
                 const data = await response.json();
 
                 devices = data.perDevice || [];
@@ -1920,13 +1923,16 @@
         async function loadDeviceSpeedHistory(deviceId) {
             try {
                 const response = await fetch(`/api/devices/${deviceId}/health`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
                 const data = await response.json();
 
-                if (data.recent_tests && data.recent_tests.length > 0) {
-                    renderSpeedChart(data.recent_tests);
+                if (data.recentTests && data.recentTests.length > 0) {
+                    renderSpeedChart(data.recentTests);
 
                     // Use most recent test to populate detail fields not in aggregate data
-                    const latest = data.recent_tests[0];
+                    const latest = data.recentTests[0];
 
                     // WiFi details from latest test
                     document.getElementById('detailSSID').textContent = latest.ssid || '-';

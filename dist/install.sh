@@ -210,7 +210,7 @@ echo "Step 3: Installing Speed Monitor v3.1.41..."
 
 # Download speed_monitor.sh from GitHub (most reliable source)
 echo "  Downloading speed_monitor.sh from GitHub..."
-curl -fsSL "$GITHUB_RAW/speed_monitor.sh" -o "$BIN_DIR/speed_monitor.sh"
+curl -fsSL --max-time 60 "$GITHUB_RAW/speed_monitor.sh" -o "$BIN_DIR/speed_monitor.sh"
 chmod +x "$BIN_DIR/speed_monitor.sh"
 
 # Verify the downloaded script has the correct version
@@ -232,7 +232,7 @@ fi
 
 # Download and install SpeedMonitor.app from GitHub
 echo "  Downloading SpeedMonitor.app from GitHub..."
-curl -fsSL "$GITHUB_RAW/dist/SpeedMonitor.app.zip" -o /tmp/SpeedMonitor.app.zip
+curl -fsSL --max-time 120 "$GITHUB_RAW/dist/SpeedMonitor.app.zip" -o /tmp/SpeedMonitor.app.zip
 
 if [[ -f /tmp/SpeedMonitor.app.zip ]]; then
     unzip -o /tmp/SpeedMonitor.app.zip -d /tmp/ > /dev/null 2>&1
@@ -274,6 +274,16 @@ echo ""
 # =============================================================================
 echo "Step 4: Setting up background services..."
 
+# Detect Homebrew location dynamically (Apple Silicon vs Intel)
+if [[ -d "/opt/homebrew/bin" ]]; then
+    BREW_PATH="/opt/homebrew/bin"
+elif [[ -d "/usr/local/bin" ]]; then
+    BREW_PATH="/usr/local/bin"
+else
+    BREW_PATH="/opt/homebrew/bin"  # Default fallback
+fi
+echo "  Detected Homebrew path: $BREW_PATH"
+
 # Create launchd plist for speed monitor
 cat > "$HOME/Library/LaunchAgents/$PLIST_NAME" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -297,7 +307,7 @@ cat > "$HOME/Library/LaunchAgents/$PLIST_NAME" << EOF
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <string>$BREW_PATH:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
         <key>SPEED_MONITOR_SERVER</key>
         <string>$SERVER_URL</string>
     </dict>
