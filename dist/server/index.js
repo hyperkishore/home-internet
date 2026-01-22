@@ -685,6 +685,11 @@ app.get('/api/stats', async (req, res) => {
       latest_tests AS (
         SELECT DISTINCT ON (device_id)
           device_id,
+          download_mbps as latest_download,
+          upload_mbps as latest_upload,
+          latency_ms as latest_latency,
+          jitter_ms as latest_jitter,
+          packet_loss_pct as latest_packet_loss,
           vpn_status,
           vpn_name,
           bssid,
@@ -709,6 +714,11 @@ app.get('/api/stats', async (req, res) => {
       )
       SELECT
         ds.*,
+        lt.latest_download,
+        lt.latest_upload,
+        lt.latest_latency,
+        lt.latest_jitter,
+        lt.latest_packet_loss,
         lt.vpn_status,
         lt.vpn_name,
         lt.bssid,
@@ -826,6 +836,8 @@ app.get('/api/stats/wifi', async (req, res) => {
 // API: VPN statistics
 app.get('/api/stats/vpn', async (req, res) => {
   try {
+    const { days = 30 } = req.query;
+
     // VPN usage distribution
     const distribution = await pool.query(`
       SELECT
@@ -838,11 +850,12 @@ app.get('/api/stats/vpn', async (req, res) => {
         ROUND(AVG(jitter_ms)::numeric, 2) as avg_jitter
       FROM speed_results
       WHERE status LIKE 'success%'
+        AND timestamp_utc > NOW() - INTERVAL '${parseInt(days)} days'
       GROUP BY vpn_status, vpn_name
       ORDER BY count DESC
     `);
 
-    // VPN vs non-VPN comparison
+    // VPN vs non-VPN comparison with averages
     const comparison = await pool.query(`
       SELECT
         CASE WHEN vpn_status = 'connected' THEN 'VPN On' ELSE 'VPN Off' END as mode,
@@ -854,13 +867,215 @@ app.get('/api/stats/vpn', async (req, res) => {
         ROUND(AVG(packet_loss_pct)::numeric, 2) as avg_packet_loss
       FROM speed_results
       WHERE status LIKE 'success%'
+        AND timestamp_utc > NOW() - INTERVAL '${parseInt(days)} days'
       GROUP BY mode
     `);
 
-    res.json({ distribution: distribution.rows, comparison: comparison.rows });
+    // Detailed percentile statistics for VPN analysis
+    const percentiles = await pool.query(`
+      SELECT
+        vpn_status,
+        COUNT(*) as sample_count,
+        ROUND(AVG(download_mbps)::numeric, 2) as avg_download,
+        ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY download_mbps)::numeric, 2) as median_download,
+        ROUND(PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY download_mbps)::numeric, 2) as p25_download,
+        ROUND(PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY download_mbps)::numeric, 2) as p75_download,
+        ROUND(PERCENTILE_CONT(0.1) WITHIN GROUP (ORDER BY download_mbps)::numeric, 2) as p10_download,
+        ROUND(PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY download_mbps)::numeric, 2) as p90_download,
+        ROUND(STDDEV(download_mbps)::numeric, 2) as stddev_download,
+        ROUND(MIN(download_mbps)::numeric, 2) as min_download,
+        ROUND(MAX(download_mbps)::numeric, 2) as max_download,
+        ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY upload_mbps)::numeric, 2) as median_upload,
+        ROUND(PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY upload_mbps)::numeric, 2) as p25_upload,
+        ROUND(PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY upload_mbps)::numeric, 2) as p75_upload,
+        ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY latency_ms)::numeric, 2) as median_latency,
+        ROUND(PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY latency_ms)::numeric, 2) as p25_latency,
+        ROUND(PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY latency_ms)::numeric, 2) as p75_latency,
+        ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY jitter_ms)::numeric, 2) as median_jitter
+      FROM speed_results
+      WHERE status LIKE 'success%'
+        AND timestamp_utc > NOW() - INTERVAL '${parseInt(days)} days'
+      GROUP BY vpn_status
+    `);
+
+    // Speed distribution buckets for comparison
+    const speedBuckets = await pool.query(`
+      SELECT
+        vpn_status,
+        CASE
+          WHEN download_mbps < 10 THEN '< 10 Mbps'
+          WHEN download_mbps < 25 THEN '10-25 Mbps'
+          WHEN download_mbps < 50 THEN '25-50 Mbps'
+          WHEN download_mbps < 100 THEN '50-100 Mbps'
+          ELSE '> 100 Mbps'
+        END as speed_bucket,
+        COUNT(*) as count
+      FROM speed_results
+      WHERE status LIKE 'success%'
+        AND timestamp_utc > NOW() - INTERVAL '${parseInt(days)} days'
+      GROUP BY vpn_status, speed_bucket
+      ORDER BY vpn_status, MIN(download_mbps)
+    `);
+
+    // Time-of-day analysis for VPN
+    const timeOfDay = await pool.query(`
+      SELECT
+        vpn_status,
+        EXTRACT(HOUR FROM timestamp_utc) as hour,
+        COUNT(*) as test_count,
+        ROUND(AVG(download_mbps)::numeric, 2) as avg_download,
+        ROUND(AVG(latency_ms)::numeric, 2) as avg_latency
+      FROM speed_results
+      WHERE status LIKE 'success%'
+        AND timestamp_utc > NOW() - INTERVAL '${parseInt(days)} days'
+      GROUP BY vpn_status, hour
+      ORDER BY vpn_status, hour
+    `);
+
+    res.json({
+      distribution: distribution.rows,
+      comparison: comparison.rows,
+      percentiles: percentiles.rows,
+      speedBuckets: speedBuckets.rows,
+      timeOfDay: timeOfDay.rows
+    });
   } catch (err) {
     console.error('Error fetching VPN stats:', err);
     res.status(500).json({ error: 'Failed to fetch VPN stats' });
+  }
+});
+
+// API: Combined Analytics with cross-dimensional filtering
+app.get('/api/stats/analytics', async (req, res) => {
+  try {
+    const { days = 30, ssid, band, vpn, channel, ap, device } = req.query;
+
+    // Build WHERE conditions
+    let whereConditions = ["status LIKE 'success%'", `timestamp_utc > NOW() - INTERVAL '${parseInt(days)} days'`];
+    if (ssid && ssid !== 'all') whereConditions.push(`ssid = '${ssid.replace(/'/g, "''")}'`);
+    if (band && band !== 'all') whereConditions.push(`band = '${band.replace(/'/g, "''")}'`);
+    if (vpn && vpn !== 'all') whereConditions.push(`vpn_status = '${vpn.replace(/'/g, "''")}'`);
+    if (channel && channel !== 'all') whereConditions.push(`channel = ${parseInt(channel)}`);
+    if (ap && ap !== 'all') whereConditions.push(`bssid = '${ap.replace(/'/g, "''")}'`);
+    if (device && device !== 'all') whereConditions.push(`device_id = '${device.replace(/'/g, "''")}'`);
+
+    const whereClause = whereConditions.join(' AND ');
+
+    // Run all analytics queries with the combined filter
+    const [overview, bySSID, byAP, byChannel, vpnComparison, trends] = await Promise.all([
+      // Overview stats
+      pool.query(`
+        SELECT
+          COUNT(*) as test_count,
+          COUNT(DISTINCT device_id) as device_count,
+          ROUND(AVG(download_mbps)::numeric, 2) as avg_download,
+          ROUND(AVG(upload_mbps)::numeric, 2) as avg_upload,
+          ROUND(AVG(latency_ms)::numeric, 2) as avg_latency,
+          ROUND(AVG(jitter_ms)::numeric, 2) as avg_jitter,
+          ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY download_mbps)::numeric, 2) as median_download
+        FROM speed_results
+        WHERE ${whereClause}
+      `),
+
+      // By SSID
+      pool.query(`
+        SELECT
+          ssid,
+          COUNT(*) as test_count,
+          COUNT(DISTINCT device_id) as device_count,
+          ROUND(AVG(download_mbps)::numeric, 2) as avg_download,
+          ROUND(AVG(upload_mbps)::numeric, 2) as avg_upload,
+          ROUND(AVG(latency_ms)::numeric, 2) as avg_latency
+        FROM speed_results
+        WHERE ${whereClause} AND ssid IS NOT NULL
+        GROUP BY ssid
+        ORDER BY test_count DESC
+      `),
+
+      // By AP (BSSID)
+      pool.query(`
+        SELECT
+          bssid,
+          MAX(ssid) as ssid,
+          COUNT(*) as test_count,
+          COUNT(DISTINCT device_id) as device_count,
+          ROUND(AVG(download_mbps)::numeric, 2) as avg_download,
+          ROUND(AVG(upload_mbps)::numeric, 2) as avg_upload,
+          ROUND(AVG(rssi_dbm)::numeric, 0) as avg_rssi
+        FROM speed_results
+        WHERE ${whereClause} AND bssid IS NOT NULL
+        GROUP BY bssid
+        ORDER BY test_count DESC
+      `),
+
+      // By Channel
+      pool.query(`
+        SELECT
+          channel,
+          band,
+          COUNT(*) as test_count,
+          COUNT(DISTINCT device_id) as device_count,
+          ROUND(AVG(download_mbps)::numeric, 2) as avg_download,
+          ROUND(AVG(upload_mbps)::numeric, 2) as avg_upload,
+          ROUND(AVG(rssi_dbm)::numeric, 0) as avg_rssi
+        FROM speed_results
+        WHERE ${whereClause} AND channel IS NOT NULL
+        GROUP BY channel, band
+        ORDER BY channel
+      `),
+
+      // VPN comparison
+      pool.query(`
+        SELECT
+          vpn_status,
+          COUNT(*) as test_count,
+          ROUND(AVG(download_mbps)::numeric, 2) as avg_download,
+          ROUND(AVG(upload_mbps)::numeric, 2) as avg_upload,
+          ROUND(AVG(latency_ms)::numeric, 2) as avg_latency
+        FROM speed_results
+        WHERE ${whereClause}
+        GROUP BY vpn_status
+      `),
+
+      // Daily trends
+      pool.query(`
+        SELECT
+          DATE(timestamp_utc) as date,
+          COUNT(*) as test_count,
+          ROUND(AVG(download_mbps)::numeric, 2) as avg_download,
+          ROUND(AVG(upload_mbps)::numeric, 2) as avg_upload
+        FROM speed_results
+        WHERE ${whereClause}
+        GROUP BY date
+        ORDER BY date
+      `)
+    ]);
+
+    // Get unique filter values for populating dropdowns
+    const filterValues = await pool.query(`
+      SELECT
+        ARRAY_AGG(DISTINCT ssid) FILTER (WHERE ssid IS NOT NULL) as ssids,
+        ARRAY_AGG(DISTINCT band) FILTER (WHERE band IS NOT NULL) as bands,
+        ARRAY_AGG(DISTINCT channel::text) FILTER (WHERE channel IS NOT NULL) as channels,
+        ARRAY_AGG(DISTINCT bssid) FILTER (WHERE bssid IS NOT NULL) as aps,
+        ARRAY_AGG(DISTINCT device_id) as devices
+      FROM speed_results
+      WHERE status LIKE 'success%'
+        AND timestamp_utc > NOW() - INTERVAL '${parseInt(days)} days'
+    `);
+
+    res.json({
+      overview: overview.rows[0],
+      bySSID: bySSID.rows,
+      byAP: byAP.rows,
+      byChannel: byChannel.rows,
+      vpnComparison: vpnComparison.rows,
+      trends: trends.rows,
+      filterValues: filterValues.rows[0]
+    });
+  } catch (err) {
+    console.error('Error fetching combined analytics:', err);
+    res.status(500).json({ error: 'Failed to fetch analytics' });
   }
 });
 
