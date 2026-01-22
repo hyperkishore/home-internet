@@ -1,6 +1,7 @@
 #!/bin/bash
 # Speed Monitor - Uninstaller
-# Usage: curl -fsSL https://raw.githubusercontent.com/hyperkishore/home-internet/main/dist/uninstall.sh | bash
+# Usage: curl -fsSL https://home-internet.onrender.com/uninstall.sh | bash
+# Or:    curl -fsSL https://raw.githubusercontent.com/riyan-hv/home-internet/main/dist/uninstall.sh | bash
 
 SCRIPT_DIR="$HOME/.local/share/nkspeedtest"
 CONFIG_DIR="$HOME/.config/nkspeedtest"

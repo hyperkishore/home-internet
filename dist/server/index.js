@@ -566,27 +566,52 @@ app.get('/api/stats', async (req, res) => {
       WHERE status LIKE 'success%'
     `);
 
-    // Per-device stats
+    // Per-device stats with latest test values (VPN status, BSSID) using subquery
+    // MAX(vpn_status) is wrong because alphabetically "disconnected" > "connected"
+    // So we join with the latest test to get accurate VPN status and BSSID for AP name lookup
     const perDevice = await pool.query(`
+      WITH device_stats AS (
+        SELECT
+          device_id,
+          MAX(user_email) as user_email,
+          MAX(hostname) as hostname,
+          MAX(os_version) as os_version,
+          MAX(app_version) as app_version,
+          COUNT(*) as test_count,
+          ROUND(AVG(download_mbps)::numeric, 2) as avg_download,
+          ROUND(AVG(upload_mbps)::numeric, 2) as avg_upload,
+          ROUND(AVG(latency_ms)::numeric, 2) as avg_latency,
+          ROUND(AVG(jitter_ms)::numeric, 2) as avg_jitter,
+          MAX(timestamp_utc) as last_test
+        FROM speed_results
+        WHERE status LIKE 'success%'
+        GROUP BY device_id
+      ),
+      latest_tests AS (
+        SELECT DISTINCT ON (device_id)
+          device_id,
+          vpn_status,
+          vpn_name,
+          bssid
+        FROM speed_results
+        WHERE status LIKE 'success%'
+        ORDER BY device_id, timestamp_utc DESC
+      )
       SELECT
-        device_id,
-        MAX(user_email) as user_email,
-        MAX(hostname) as hostname,
-        MAX(os_version) as os_version,
-        MAX(app_version) as app_version,
-        COUNT(*) as test_count,
-        ROUND(AVG(download_mbps)::numeric, 2) as avg_download,
-        ROUND(AVG(upload_mbps)::numeric, 2) as avg_upload,
-        ROUND(AVG(latency_ms)::numeric, 2) as avg_latency,
-        ROUND(AVG(jitter_ms)::numeric, 2) as avg_jitter,
-        MAX(timestamp_utc) as last_test,
-        MAX(vpn_status) as vpn_status,
-        MAX(vpn_name) as vpn_name
-      FROM speed_results
-      WHERE status LIKE 'success%'
-      GROUP BY device_id
-      ORDER BY last_test DESC
+        ds.*,
+        lt.vpn_status,
+        lt.vpn_name,
+        lt.bssid
+      FROM device_stats ds
+      LEFT JOIN latest_tests lt ON ds.device_id = lt.device_id
+      ORDER BY ds.last_test DESC
     `);
+
+    // Add AP names to perDevice results
+    const perDeviceWithAPNames = perDevice.rows.map(device => ({
+      ...device,
+      ap_name: lookupAPName(device.bssid)
+    }));
 
     // Hourly trends (last 24 hours)
     const hourly = await pool.query(`
@@ -603,7 +628,7 @@ app.get('/api/stats', async (req, res) => {
       ORDER BY hour
     `);
 
-    res.json({ overall: overall.rows[0], perDevice: perDevice.rows, hourly: hourly.rows });
+    res.json({ overall: overall.rows[0], perDevice: perDeviceWithAPNames, hourly: hourly.rows });
   } catch (err) {
     console.error('Error fetching stats:', err);
     res.status(500).json({ error: 'Failed to fetch stats' });
