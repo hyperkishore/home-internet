@@ -9,7 +9,7 @@
 # v2.1.0: Added WiFi debugging metrics (MCS, error rates, BSSID tracking)
 #
 
-APP_VERSION="3.1.38"
+APP_VERSION="3.1.39"
 
 # Configuration
 DATA_DIR="$HOME/.local/share/nkspeedtest"
@@ -911,12 +911,47 @@ collect_metrics() {
         if [[ "$cf_code" == "200" ]] && [[ -n "$cf_speed" ]] && [[ "$cf_speed" != "0" ]]; then
             # Convert bytes/sec to Mbps (bytes/sec * 8 / 1000000)
             DOWNLOAD_MBPS=$(echo "scale=2; $cf_speed * 8 / 1000000" | bc 2>/dev/null || echo "0")
-            # Estimate latency from connection time (rough approximation)
-            LATENCY_MS=$(echo "scale=1; $cf_time * 100" | bc 2>/dev/null || echo "0")
-            UPLOAD_MBPS="0"  # Cloudflare test doesn't measure upload
+
+            # Measure REAL latency and jitter using ping to Cloudflare DNS (1.1.1.1)
+            local ping_results=$(ping -c 5 -q 1.1.1.1 2>/dev/null | tail -1)
+            if [[ -n "$ping_results" ]] && echo "$ping_results" | grep -q "avg"; then
+                # Format: round-trip min/avg/max/stddev = 10.123/15.456/20.789/3.456 ms
+                local ping_stats=$(echo "$ping_results" | awk -F'=' '{print $2}' | awk -F'/' '{print $2, $4}')
+                LATENCY_MS=$(echo "$ping_stats" | awk '{printf "%.1f", $1}')
+                JITTER_MS=$(echo "$ping_stats" | awk '{printf "%.2f", $2}')
+                JITTER_P50=${JITTER_MS}
+                JITTER_P95=${JITTER_MS}
+                log "Measured latency: ${LATENCY_MS}ms, jitter: ${JITTER_MS}ms"
+            else
+                # Fallback: use curl connection time as rough latency estimate
+                local curl_latency=$(curl -s -o /dev/null -w "%{time_connect}" --connect-timeout 5 "https://1.1.1.1" 2>/dev/null)
+                LATENCY_MS=$(echo "scale=1; ${curl_latency:-0} * 1000" | bc 2>/dev/null || echo "0")
+                JITTER_MS="0"
+                log "Fallback latency measurement: ${LATENCY_MS}ms"
+            fi
+
+            # Measure upload speed using Cloudflare upload endpoint
+            log "Measuring upload speed..."
+            local upload_data=$(dd if=/dev/zero bs=1M count=5 2>/dev/null | base64)
+            local cf_upload_result=$(curl -s -o /dev/null -w "%{speed_upload},%{http_code}" \
+                --connect-timeout 10 --max-time 30 \
+                -X POST -d "$upload_data" \
+                "https://speed.cloudflare.com/__up" 2>&1)
+
+            local cf_upload_speed=$(echo "$cf_upload_result" | cut -d',' -f1)
+            local cf_upload_code=$(echo "$cf_upload_result" | cut -d',' -f2)
+
+            if [[ "$cf_upload_code" == "200" ]] && [[ -n "$cf_upload_speed" ]] && [[ "$cf_upload_speed" != "0" ]]; then
+                UPLOAD_MBPS=$(echo "scale=2; $cf_upload_speed * 8 / 1000000" | bc 2>/dev/null || echo "0")
+                log "Upload speed: ${UPLOAD_MBPS} Mbps"
+            else
+                UPLOAD_MBPS="0"
+                log "Upload measurement failed, setting to 0"
+            fi
+
             STATUS="success_cloudflare"
             speedtest_success=true
-            log "Strategy 3 succeeded (Cloudflare) - Down: ${DOWNLOAD_MBPS} Mbps"
+            log "Strategy 3 succeeded (Cloudflare) - Down: ${DOWNLOAD_MBPS} Mbps, Up: ${UPLOAD_MBPS} Mbps, Latency: ${LATENCY_MS}ms"
         else
             log "Strategy 3 failed: code=$cf_code speed=$cf_speed"
         fi
@@ -938,11 +973,28 @@ collect_metrics() {
 
             if [[ "$fast_code" == "200" ]] && [[ -n "$fast_speed" ]] && [[ "$fast_speed" != "0" ]]; then
                 DOWNLOAD_MBPS=$(echo "scale=2; $fast_speed * 8 / 1000000" | bc 2>/dev/null || echo "0")
-                LATENCY_MS="0"
+
+                # Measure REAL latency and jitter using ping to Google DNS (8.8.8.8)
+                local ping_results=$(ping -c 5 -q 8.8.8.8 2>/dev/null | tail -1)
+                if [[ -n "$ping_results" ]] && echo "$ping_results" | grep -q "avg"; then
+                    local ping_stats=$(echo "$ping_results" | awk -F'=' '{print $2}' | awk -F'/' '{print $2, $4}')
+                    LATENCY_MS=$(echo "$ping_stats" | awk '{printf "%.1f", $1}')
+                    JITTER_MS=$(echo "$ping_stats" | awk '{printf "%.2f", $2}')
+                    JITTER_P50=${JITTER_MS}
+                    JITTER_P95=${JITTER_MS}
+                    log "Measured latency: ${LATENCY_MS}ms, jitter: ${JITTER_MS}ms"
+                else
+                    # Fallback: use curl connection time
+                    local curl_latency=$(curl -s -o /dev/null -w "%{time_connect}" --connect-timeout 5 "https://8.8.8.8" 2>/dev/null)
+                    LATENCY_MS=$(echo "scale=1; ${curl_latency:-0} * 1000" | bc 2>/dev/null || echo "0")
+                    JITTER_MS="0"
+                    log "Fallback latency measurement: ${LATENCY_MS}ms"
+                fi
+
                 UPLOAD_MBPS="0"
                 STATUS="success_fastcom"
                 speedtest_success=true
-                log "Strategy 4 succeeded (Fast.com) - Down: ${DOWNLOAD_MBPS} Mbps"
+                log "Strategy 4 succeeded (Fast.com) - Down: ${DOWNLOAD_MBPS} Mbps, Latency: ${LATENCY_MS}ms"
             else
                 log "Strategy 4 failed: code=$fast_code"
             fi
