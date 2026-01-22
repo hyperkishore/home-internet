@@ -9,7 +9,7 @@
 # v2.1.0: Added WiFi debugging metrics (MCS, error rates, BSSID tracking)
 #
 
-APP_VERSION="3.1.39"
+APP_VERSION="3.1.40"
 
 # Configuration
 DATA_DIR="$HOME/.local/share/nkspeedtest"
@@ -417,6 +417,79 @@ detect_vpn() {
     echo "VPN_NAME=$vpn_name"
 }
 
+# Zscaler IP ranges (CIDR notation)
+# These are the IP ranges that Zscaler uses for egress traffic
+ZSCALER_IP_RANGES=(
+    "136.226.244.0/23"
+    "167.103.88.0/23"
+    "136.226.242.0/23"
+    "136.226.252.0/23"
+    "167.103.6.0/23"
+    "167.103.54.0/23"
+    "165.225.122.0/23"
+    "167.103.70.0/23"
+    "167.103.72.0/23"
+    "167.103.74.0/23"
+    "167.103.76.0/23"
+    "167.103.78.0/23"
+    "167.103.204.0/23"
+    "167.103.206.0/23"
+    "167.103.208.0/23"
+    "167.103.210.0/23"
+)
+
+# Check if an IP address is within a CIDR range
+# Args: $1 = IP address, $2 = CIDR (e.g., "192.168.1.0/24")
+ip_in_cidr() {
+    local ip="$1"
+    local cidr="$2"
+
+    # Split CIDR into base IP and prefix length
+    local base_ip="${cidr%/*}"
+    local prefix="${cidr#*/}"
+
+    # Convert IP addresses to integers
+    local ip_int=0
+    local base_int=0
+    local IFS='.'
+
+    read -r a b c d <<< "$ip"
+    ip_int=$((a * 16777216 + b * 65536 + c * 256 + d))
+
+    read -r a b c d <<< "$base_ip"
+    base_int=$((a * 16777216 + b * 65536 + c * 256 + d))
+
+    # Calculate mask from prefix length
+    local mask=$((0xFFFFFFFF << (32 - prefix) & 0xFFFFFFFF))
+
+    # Check if IP is in range
+    if [[ $((ip_int & mask)) -eq $((base_int & mask)) ]]; then
+        return 0  # true - IP is in range
+    else
+        return 1  # false - IP is not in range
+    fi
+}
+
+# Check if an IP is a Zscaler egress IP
+# Args: $1 = IP address to check
+# Returns: 0 if Zscaler, 1 if not
+is_zscaler_ip() {
+    local ip="$1"
+
+    # Skip if not a valid IPv4 address
+    if [[ ! "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        return 1
+    fi
+
+    for cidr in "${ZSCALER_IP_RANGES[@]}"; do
+        if ip_in_cidr "$ip" "$cidr"; then
+            return 0  # It's a Zscaler IP
+        fi
+    done
+
+    return 1  # Not a Zscaler IP
+}
+
 # Get MCS index and spatial streams from system_profiler
 # This is slower (~2-3 sec) but provides valuable link quality info
 get_mcs_info() {
@@ -783,6 +856,14 @@ collect_metrics() {
     # VPN detection
     log "Detecting VPN status..."
     eval $(detect_vpn)
+
+    # Override VPN status if public IP is in Zscaler ranges
+    # This is more reliable than process detection for Zscaler
+    if is_zscaler_ip "$PUBLIC_IP"; then
+        VPN_STATUS="connected"
+        VPN_NAME="Zscaler"
+        log "Detected Zscaler via public IP: $PUBLIC_IP"
+    fi
 
     # MCS index and spatial streams (WiFi link quality)
     log "Collecting MCS info..."
