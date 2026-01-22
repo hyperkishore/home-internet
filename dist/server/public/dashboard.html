@@ -1270,13 +1270,13 @@
                         <th style="width: 40px;"></th>
                         <th class="sortable" onclick="sortBy('hostname')">Device ↕</th>
                         <th class="sortable" onclick="sortBy('user_email')">User ↕</th>
-                        <th class="sortable" onclick="sortBy('download_mbps')">Download ↕</th>
-                        <th class="sortable" onclick="sortBy('upload_mbps')">Upload ↕</th>
-                        <th class="sortable" onclick="sortBy('latency_ms')">Latency ↕</th>
-                        <th class="sortable" onclick="sortBy('rssi_dbm')">Signal ↕</th>
+                        <th class="sortable" onclick="sortBy('avg_download')">Download ↕</th>
+                        <th class="sortable" onclick="sortBy('avg_upload')">Upload ↕</th>
+                        <th class="sortable" onclick="sortBy('avg_latency')">Latency ↕</th>
+                        <th class="sortable" onclick="sortBy('test_count')">Tests ↕</th>
                         <th>VPN</th>
-                        <th>Band</th>
-                        <th class="sortable" onclick="sortBy('last_seen')">Last Seen ↕</th>
+                        <th>Version</th>
+                        <th class="sortable" onclick="sortBy('last_test')">Last Seen ↕</th>
                     </tr>
                 </thead>
                 <tbody id="deviceTableBody">
@@ -1551,7 +1551,7 @@
         function updateStats(data) {
             const now = new Date();
             const activeDevices = devices.filter(d => {
-                const lastSeen = new Date(d.last_seen || d.timestamp_utc);
+                const lastSeen = new Date(d.last_test || d.last_seen || d.timestamp_utc);
                 return (now - lastSeen) < 3600000; // 1 hour
             });
 
@@ -1559,21 +1559,20 @@
             document.getElementById('activeDevices').textContent = `${activeDevices.length} active in last hour`;
 
             const avgDown = activeDevices.length > 0
-                ? (activeDevices.reduce((sum, d) => sum + (parseFloat(d.download_mbps) || 0), 0) / activeDevices.length).toFixed(1)
+                ? (activeDevices.reduce((sum, d) => sum + (parseFloat(d.avg_download) || 0), 0) / activeDevices.length).toFixed(1)
                 : '-';
             document.getElementById('avgDownload').textContent = avgDown;
 
-            const vpnCount = activeDevices.filter(d => d.vpn_status === 'connected').length;
+            const vpnCount = activeDevices.filter(d => d.vpn_status === 'connected' || d.vpn_name === 'Zscaler').length;
             document.getElementById('vpnConnected').textContent = vpnCount;
             document.getElementById('vpnPercentage').textContent = activeDevices.length > 0
                 ? `${Math.round(vpnCount / activeDevices.length * 100)}% of active devices`
                 : '0%';
 
             const warningDevices = activeDevices.filter(d => {
-                const rssi = parseInt(d.rssi_dbm) || -100;
-                const download = parseFloat(d.download_mbps) || 0;
-                const jitter = parseFloat(d.jitter_ms) || 0;
-                return rssi < -70 || download < 10 || jitter > 50;
+                const download = parseFloat(d.avg_download) || 0;
+                const jitter = parseFloat(d.avg_jitter) || 0;
+                return download < 10 || jitter > 50;
             });
             document.getElementById('needsAttention').textContent = warningDevices.length;
             document.getElementById('warningCount').textContent = warningDevices.length;
@@ -1593,13 +1592,13 @@
                         device.hostname,
                         device.user_email,
                         device.device_id,
-                        device.ssid
+                        device.vpn_name
                     ].filter(Boolean).join(' ').toLowerCase();
                     if (!searchFields.includes(search)) return false;
                 }
 
                 // Last seen filter
-                const lastSeen = new Date(device.last_seen || device.timestamp_utc);
+                const lastSeen = new Date(device.last_test || device.last_seen || device.timestamp_utc);
                 const hoursSince = (now - lastSeen) / 3600000;
 
                 switch (filters.lastSeen) {
@@ -1616,17 +1615,20 @@
 
                 // VPN filter
                 if (filters.vpn !== 'all') {
-                    if (filters.vpn === 'connected' && device.vpn_status !== 'connected') return false;
-                    if (filters.vpn === 'disconnected' && device.vpn_status === 'connected') return false;
+                    const hasVpn = device.vpn_status === 'connected' || device.vpn_name === 'Zscaler';
+                    if (filters.vpn === 'connected' && !hasVpn) return false;
+                    if (filters.vpn === 'disconnected' && hasVpn) return false;
                 }
 
-                // Band filter
+                // Band filter - skip if no band data in aggregate
                 if (filters.band !== 'all') {
-                    if (!device.band || !device.band.includes(filters.band.replace('GHz', ''))) return false;
+                    if (!device.band) return true; // Don't filter out if no band data
+                    if (!device.band.includes(filters.band.replace('GHz', ''))) return false;
                 }
 
-                // Signal filter
+                // Signal filter - skip if no signal data in aggregate
                 if (filters.signal !== 'all') {
+                    if (!device.rssi_dbm) return true; // Don't filter out if no signal data
                     const rssi = parseInt(device.rssi_dbm) || -100;
                     if (filters.signal === 'good' && rssi < -65) return false;
                     if (filters.signal === 'weak' && rssi >= -65) return false;
@@ -1634,7 +1636,7 @@
 
                 // Speed filter
                 if (filters.speed !== 'all') {
-                    const download = parseFloat(device.download_mbps) || 0;
+                    const download = parseFloat(device.avg_download) || 0;
                     if (filters.speed === 'fast' && download < 50) return false;
                     if (filters.speed === 'slow' && download >= 50) return false;
                 }
@@ -1644,15 +1646,17 @@
 
             // Sort
             filteredDevices.sort((a, b) => {
-                let aVal = a[sortColumn];
-                let bVal = b[sortColumn];
+                let aVal, bVal;
 
-                if (sortColumn === 'last_seen') {
-                    aVal = new Date(a.last_seen || a.timestamp_utc);
-                    bVal = new Date(b.last_seen || b.timestamp_utc);
-                } else if (['download_mbps', 'upload_mbps', 'latency_ms', 'rssi_dbm'].includes(sortColumn)) {
-                    aVal = parseFloat(aVal) || 0;
-                    bVal = parseFloat(bVal) || 0;
+                if (sortColumn === 'last_test' || sortColumn === 'last_seen') {
+                    aVal = new Date(a.last_test || a.last_seen || 0);
+                    bVal = new Date(b.last_test || b.last_seen || 0);
+                } else if (['avg_download', 'avg_upload', 'avg_latency', 'avg_jitter'].includes(sortColumn)) {
+                    aVal = parseFloat(a[sortColumn]) || 0;
+                    bVal = parseFloat(b[sortColumn]) || 0;
+                } else {
+                    aVal = a[sortColumn];
+                    bVal = b[sortColumn];
                 }
 
                 if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
@@ -1667,16 +1671,15 @@
         // Get device status
         function getDeviceStatus(device) {
             const now = new Date();
-            const lastSeen = new Date(device.last_seen || device.timestamp_utc);
+            const lastSeen = new Date(device.last_test || device.last_seen || device.timestamp_utc);
             const hoursSince = (now - lastSeen) / 3600000;
 
             if (hoursSince > 1) return 'offline';
 
-            const rssi = parseInt(device.rssi_dbm) || -100;
-            const download = parseFloat(device.download_mbps) || 0;
-            const jitter = parseFloat(device.jitter_ms) || 0;
+            const download = parseFloat(device.avg_download) || 0;
+            const jitter = parseFloat(device.avg_jitter) || 0;
 
-            if (rssi < -75 || download < 10 || jitter > 100) return 'warning';
+            if (download < 10 || jitter > 100) return 'warning';
             return 'online';
         }
 
@@ -1728,29 +1731,28 @@
                         <div class="device-metrics">
                             <div class="device-metric">
                                 <div class="device-metric-label">Download</div>
-                                <div class="device-metric-value">${formatSpeed(device.download_mbps)}</div>
+                                <div class="device-metric-value">${formatSpeed(device.avg_download)}</div>
                             </div>
                             <div class="device-metric">
                                 <div class="device-metric-label">Upload</div>
-                                <div class="device-metric-value">${formatSpeed(device.upload_mbps)}</div>
+                                <div class="device-metric-value">${formatSpeed(device.avg_upload)}</div>
                             </div>
                             <div class="device-metric">
                                 <div class="device-metric-label">Latency</div>
-                                <div class="device-metric-value">${formatLatency(device.latency_ms)}</div>
+                                <div class="device-metric-value">${formatLatency(device.avg_latency)}</div>
                             </div>
                             <div class="device-metric">
-                                <div class="device-metric-label">Signal</div>
-                                <div class="device-metric-value">${device.rssi_dbm || '-'} dBm</div>
+                                <div class="device-metric-label">Tests</div>
+                                <div class="device-metric-value">${device.test_count || 0}</div>
                             </div>
                         </div>
                         <div class="device-tags">
-                            ${device.vpn_status === 'connected'
-                                ? '<span class="device-tag vpn">🔒 VPN</span>'
+                            ${(device.vpn_status === 'connected' || device.vpn_name === 'Zscaler')
+                                ? `<span class="device-tag vpn">🔒 ${device.vpn_name || 'VPN'}</span>`
                                 : '<span class="device-tag no-vpn">⚠️ No VPN</span>'}
-                            ${device.band
-                                ? `<span class="device-tag ${device.band.includes('5') ? 'wifi-5g' : 'wifi-2g'}">${device.band}</span>`
+                            ${device.app_version
+                                ? `<span class="device-tag version">v${device.app_version}</span>`
                                 : ''}
-                            ${getSignalTag(device.rssi_dbm)}
                         </div>
                         <div class="last-seen ${getLastSeenClass(device)}">${formatLastSeen(device)}</div>
                     </div>
@@ -1795,16 +1797,16 @@
                             </div>
                         </td>
                         <td>${device.user_email || '-'}</td>
-                        <td>${formatSpeed(device.download_mbps)}</td>
-                        <td>${formatSpeed(device.upload_mbps)}</td>
-                        <td>${formatLatency(device.latency_ms)}</td>
-                        <td>${device.rssi_dbm || '-'} dBm</td>
+                        <td>${formatSpeed(device.avg_download)}</td>
+                        <td>${formatSpeed(device.avg_upload)}</td>
+                        <td>${formatLatency(device.avg_latency)}</td>
+                        <td>${device.test_count || 0} tests</td>
                         <td>
-                            <span class="badge ${device.vpn_status === 'connected' ? 'badge-success' : 'badge-warning'}">
-                                ${device.vpn_status === 'connected' ? '🔒' : '⚠️'}
+                            <span class="badge ${(device.vpn_status === 'connected' || device.vpn_name === 'Zscaler') ? 'badge-success' : 'badge-warning'}">
+                                ${(device.vpn_status === 'connected' || device.vpn_name === 'Zscaler') ? '🔒 ' + (device.vpn_name || 'VPN') : '⚠️ None'}
                             </span>
                         </td>
-                        <td>${device.band || '-'}</td>
+                        <td>${device.app_version || '-'}</td>
                         <td class="last-seen ${getLastSeenClass(device)}">${formatLastSeen(device)}</td>
                     </tr>
                 `;
@@ -2161,7 +2163,8 @@
         }
 
         function formatLastSeen(device) {
-            const date = new Date(device.last_seen || device.timestamp_utc);
+            const date = new Date(device.last_test || device.last_seen || device.timestamp_utc);
+            if (isNaN(date.getTime())) return 'Unknown';
             const now = new Date();
             const diff = now - date;
 
@@ -2172,7 +2175,8 @@
         }
 
         function getLastSeenClass(device) {
-            const date = new Date(device.last_seen || device.timestamp_utc);
+            const date = new Date(device.last_test || device.last_seen || device.timestamp_utc);
+            if (isNaN(date.getTime())) return 'offline';
             const now = new Date();
             const hours = (now - date) / 3600000;
 
