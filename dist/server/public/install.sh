@@ -1,5 +1,5 @@
 #!/bin/bash
-# Speed Monitor v3.1.37 - One-line installer for employees
+# Speed Monitor v3.1.41 - One-line installer for employees
 # Install:   bash <(curl -fsSL https://home-internet.onrender.com/install.sh)
 # Uninstall: bash <(curl -fsSL https://home-internet.onrender.com/uninstall.sh)
 
@@ -12,8 +12,9 @@ CONFIG_DIR="$HOME/.config/nkspeedtest"
 BIN_DIR="$HOME/.local/bin"
 PLIST_NAME="com.speedmonitor.plist"
 MENUBAR_PLIST_NAME="com.speedmonitor.menubar.plist"
+LISTENER_PLIST_NAME="com.speedmonitor.listener.plist"
 
-echo "=== Speed Monitor v3.1.37 Installer ==="
+echo "=== Speed Monitor v3.1.41 Installer ==="
 echo ""
 
 # =============================================================================
@@ -31,12 +32,15 @@ sleep 1
 echo "  Removing launchd services..."
 launchctl unload "$HOME/Library/LaunchAgents/$PLIST_NAME" 2>/dev/null || true
 launchctl unload "$HOME/Library/LaunchAgents/$MENUBAR_PLIST_NAME" 2>/dev/null || true
+launchctl unload "$HOME/Library/LaunchAgents/$LISTENER_PLIST_NAME" 2>/dev/null || true
 rm -f "$HOME/Library/LaunchAgents/$PLIST_NAME" 2>/dev/null || true
 rm -f "$HOME/Library/LaunchAgents/$MENUBAR_PLIST_NAME" 2>/dev/null || true
+rm -f "$HOME/Library/LaunchAgents/$LISTENER_PLIST_NAME" 2>/dev/null || true
 
 # Remove scripts from ~/.local/bin (curl install location)
 echo "  Removing scripts from ~/.local/bin..."
 rm -f "$BIN_DIR/speed_monitor.sh" 2>/dev/null || true
+rm -f "$BIN_DIR/command_listener.sh" 2>/dev/null || true
 rm -f "$BIN_DIR/wifi_info" 2>/dev/null || true
 
 # Remove scripts from /usr/local/speedmonitor/bin (PKG install location)
@@ -174,7 +178,7 @@ echo ""
 # =============================================================================
 # STEP 5: Download and install fresh components
 # =============================================================================
-echo "Step 3: Installing Speed Monitor v3.1.37..."
+echo "Step 3: Installing Speed Monitor v3.1.41..."
 
 # Download speed_monitor.sh
 echo "  Downloading speed_monitor.sh..."
@@ -186,6 +190,11 @@ if [[ ! -f "$BIN_DIR/speed_monitor.sh" ]]; then
     echo "❌ Failed to download speed_monitor.sh"
     exit 1
 fi
+
+# Download command_listener.sh (active command polling daemon)
+echo "  Downloading command_listener.sh..."
+curl -fsSL "$DOWNLOAD_URL/command_listener.sh" -o "$BIN_DIR/command_listener.sh"
+chmod +x "$BIN_DIR/command_listener.sh"
 
 # Also install to PKG location if directory exists (for backwards compatibility)
 if [[ -d "/usr/local/speedmonitor/bin" ]]; then
@@ -311,6 +320,40 @@ EOF
     fi
 fi
 
+# Create launchd plist for command listener (polls every 30 seconds for remote commands)
+cat > "$HOME/Library/LaunchAgents/$LISTENER_PLIST_NAME" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.speedmonitor.listener</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>$BIN_DIR/command_listener.sh</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>$SCRIPT_DIR/listener_stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>$SCRIPT_DIR/listener_stderr.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>SPEED_MONITOR_SERVER</key>
+        <string>$SERVER_URL</string>
+    </dict>
+</dict>
+</plist>
+EOF
+
+launchctl load "$HOME/Library/LaunchAgents/$LISTENER_PLIST_NAME"
+echo "  ✓ Command listener started (polls every 30s)"
+
 echo "✓ Services configured"
 echo ""
 
@@ -335,11 +378,12 @@ echo " Done!"
 # =============================================================================
 echo ""
 echo "=========================================="
-echo "   Speed Monitor v3.1.37 Installed!"
+echo "   Speed Monitor v3.1.41 Installed!"
 echo "=========================================="
 echo ""
 echo "What's running:"
 echo "  • Speed tests every 10 minutes"
+echo "  • Command listener (polls every 30 seconds)"
 echo "  • Results uploaded to: $SERVER_URL"
 echo "  • Menu bar shows live stats"
 echo ""

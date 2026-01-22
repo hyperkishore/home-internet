@@ -9,7 +9,7 @@
 # v2.1.0: Added WiFi debugging metrics (MCS, error rates, BSSID tracking)
 #
 
-APP_VERSION="3.1.37"
+APP_VERSION="3.1.41"
 
 # Configuration
 DATA_DIR="$HOME/.local/share/nkspeedtest"
@@ -417,6 +417,79 @@ detect_vpn() {
     echo "VPN_NAME=$vpn_name"
 }
 
+# Zscaler IP ranges (CIDR notation)
+# These are the IP ranges that Zscaler uses for egress traffic
+ZSCALER_IP_RANGES=(
+    "136.226.244.0/23"
+    "167.103.88.0/23"
+    "136.226.242.0/23"
+    "136.226.252.0/23"
+    "167.103.6.0/23"
+    "167.103.54.0/23"
+    "165.225.122.0/23"
+    "167.103.70.0/23"
+    "167.103.72.0/23"
+    "167.103.74.0/23"
+    "167.103.76.0/23"
+    "167.103.78.0/23"
+    "167.103.204.0/23"
+    "167.103.206.0/23"
+    "167.103.208.0/23"
+    "167.103.210.0/23"
+)
+
+# Check if an IP address is within a CIDR range
+# Args: $1 = IP address, $2 = CIDR (e.g., "192.168.1.0/24")
+ip_in_cidr() {
+    local ip="$1"
+    local cidr="$2"
+
+    # Split CIDR into base IP and prefix length
+    local base_ip="${cidr%/*}"
+    local prefix="${cidr#*/}"
+
+    # Convert IP addresses to integers
+    local ip_int=0
+    local base_int=0
+    local IFS='.'
+
+    read -r a b c d <<< "$ip"
+    ip_int=$((a * 16777216 + b * 65536 + c * 256 + d))
+
+    read -r a b c d <<< "$base_ip"
+    base_int=$((a * 16777216 + b * 65536 + c * 256 + d))
+
+    # Calculate mask from prefix length
+    local mask=$((0xFFFFFFFF << (32 - prefix) & 0xFFFFFFFF))
+
+    # Check if IP is in range
+    if [[ $((ip_int & mask)) -eq $((base_int & mask)) ]]; then
+        return 0  # true - IP is in range
+    else
+        return 1  # false - IP is not in range
+    fi
+}
+
+# Check if an IP is a Zscaler egress IP
+# Args: $1 = IP address to check
+# Returns: 0 if Zscaler, 1 if not
+is_zscaler_ip() {
+    local ip="$1"
+
+    # Skip if not a valid IPv4 address
+    if [[ ! "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        return 1
+    fi
+
+    for cidr in "${ZSCALER_IP_RANGES[@]}"; do
+        if ip_in_cidr "$ip" "$cidr"; then
+            return 0  # It's a Zscaler IP
+        fi
+    done
+
+    return 1  # Not a Zscaler IP
+}
+
 # Get MCS index and spatial streams from system_profiler
 # This is slower (~2-3 sec) but provides valuable link quality info
 get_mcs_info() {
@@ -784,6 +857,22 @@ collect_metrics() {
     log "Detecting VPN status..."
     eval $(detect_vpn)
 
+    # Zscaler detection: PUBLIC IP is the SOURCE OF TRUTH
+    # - If public IP is a Zscaler IP → VPN is connected (Zscaler)
+    # - If public IP is NOT a Zscaler IP → Zscaler VPN is disconnected
+    # This overrides process-based detection because what matters is
+    # whether traffic is actually going through Zscaler DC
+    if is_zscaler_ip "$PUBLIC_IP"; then
+        VPN_STATUS="connected"
+        VPN_NAME="Zscaler"
+        log "Zscaler detected via public IP: $PUBLIC_IP"
+    elif [[ "$VPN_NAME" == "Zscaler" ]]; then
+        # Process said Zscaler, but IP says no - trust the IP
+        VPN_STATUS="disconnected"
+        VPN_NAME="none"
+        log "Zscaler process running but traffic not via Zscaler DC (IP: $PUBLIC_IP)"
+    fi
+
     # MCS index and spatial streams (WiFi link quality)
     log "Collecting MCS info..."
     eval $(get_mcs_info)
@@ -911,12 +1000,47 @@ collect_metrics() {
         if [[ "$cf_code" == "200" ]] && [[ -n "$cf_speed" ]] && [[ "$cf_speed" != "0" ]]; then
             # Convert bytes/sec to Mbps (bytes/sec * 8 / 1000000)
             DOWNLOAD_MBPS=$(echo "scale=2; $cf_speed * 8 / 1000000" | bc 2>/dev/null || echo "0")
-            # Estimate latency from connection time (rough approximation)
-            LATENCY_MS=$(echo "scale=1; $cf_time * 100" | bc 2>/dev/null || echo "0")
-            UPLOAD_MBPS="0"  # Cloudflare test doesn't measure upload
+
+            # Measure REAL latency and jitter using ping to Cloudflare DNS (1.1.1.1)
+            local ping_results=$(ping -c 5 -q 1.1.1.1 2>/dev/null | tail -1)
+            if [[ -n "$ping_results" ]] && echo "$ping_results" | grep -q "avg"; then
+                # Format: round-trip min/avg/max/stddev = 10.123/15.456/20.789/3.456 ms
+                local ping_stats=$(echo "$ping_results" | awk -F'=' '{print $2}' | awk -F'/' '{print $2, $4}')
+                LATENCY_MS=$(echo "$ping_stats" | awk '{printf "%.1f", $1}')
+                JITTER_MS=$(echo "$ping_stats" | awk '{printf "%.2f", $2}')
+                JITTER_P50=${JITTER_MS}
+                JITTER_P95=${JITTER_MS}
+                log "Measured latency: ${LATENCY_MS}ms, jitter: ${JITTER_MS}ms"
+            else
+                # Fallback: use curl connection time as rough latency estimate
+                local curl_latency=$(curl -s -o /dev/null -w "%{time_connect}" --connect-timeout 5 "https://1.1.1.1" 2>/dev/null)
+                LATENCY_MS=$(echo "scale=1; ${curl_latency:-0} * 1000" | bc 2>/dev/null || echo "0")
+                JITTER_MS="0"
+                log "Fallback latency measurement: ${LATENCY_MS}ms"
+            fi
+
+            # Measure upload speed using Cloudflare upload endpoint
+            log "Measuring upload speed..."
+            local upload_data=$(dd if=/dev/zero bs=1M count=5 2>/dev/null | base64)
+            local cf_upload_result=$(curl -s -o /dev/null -w "%{speed_upload},%{http_code}" \
+                --connect-timeout 10 --max-time 30 \
+                -X POST -d "$upload_data" \
+                "https://speed.cloudflare.com/__up" 2>&1)
+
+            local cf_upload_speed=$(echo "$cf_upload_result" | cut -d',' -f1)
+            local cf_upload_code=$(echo "$cf_upload_result" | cut -d',' -f2)
+
+            if [[ "$cf_upload_code" == "200" ]] && [[ -n "$cf_upload_speed" ]] && [[ "$cf_upload_speed" != "0" ]]; then
+                UPLOAD_MBPS=$(echo "scale=2; $cf_upload_speed * 8 / 1000000" | bc 2>/dev/null || echo "0")
+                log "Upload speed: ${UPLOAD_MBPS} Mbps"
+            else
+                UPLOAD_MBPS="0"
+                log "Upload measurement failed, setting to 0"
+            fi
+
             STATUS="success_cloudflare"
             speedtest_success=true
-            log "Strategy 3 succeeded (Cloudflare) - Down: ${DOWNLOAD_MBPS} Mbps"
+            log "Strategy 3 succeeded (Cloudflare) - Down: ${DOWNLOAD_MBPS} Mbps, Up: ${UPLOAD_MBPS} Mbps, Latency: ${LATENCY_MS}ms"
         else
             log "Strategy 3 failed: code=$cf_code speed=$cf_speed"
         fi
@@ -938,11 +1062,28 @@ collect_metrics() {
 
             if [[ "$fast_code" == "200" ]] && [[ -n "$fast_speed" ]] && [[ "$fast_speed" != "0" ]]; then
                 DOWNLOAD_MBPS=$(echo "scale=2; $fast_speed * 8 / 1000000" | bc 2>/dev/null || echo "0")
-                LATENCY_MS="0"
+
+                # Measure REAL latency and jitter using ping to Google DNS (8.8.8.8)
+                local ping_results=$(ping -c 5 -q 8.8.8.8 2>/dev/null | tail -1)
+                if [[ -n "$ping_results" ]] && echo "$ping_results" | grep -q "avg"; then
+                    local ping_stats=$(echo "$ping_results" | awk -F'=' '{print $2}' | awk -F'/' '{print $2, $4}')
+                    LATENCY_MS=$(echo "$ping_stats" | awk '{printf "%.1f", $1}')
+                    JITTER_MS=$(echo "$ping_stats" | awk '{printf "%.2f", $2}')
+                    JITTER_P50=${JITTER_MS}
+                    JITTER_P95=${JITTER_MS}
+                    log "Measured latency: ${LATENCY_MS}ms, jitter: ${JITTER_MS}ms"
+                else
+                    # Fallback: use curl connection time
+                    local curl_latency=$(curl -s -o /dev/null -w "%{time_connect}" --connect-timeout 5 "https://8.8.8.8" 2>/dev/null)
+                    LATENCY_MS=$(echo "scale=1; ${curl_latency:-0} * 1000" | bc 2>/dev/null || echo "0")
+                    JITTER_MS="0"
+                    log "Fallback latency measurement: ${LATENCY_MS}ms"
+                fi
+
                 UPLOAD_MBPS="0"
                 STATUS="success_fastcom"
                 speedtest_success=true
-                log "Strategy 4 succeeded (Fast.com) - Down: ${DOWNLOAD_MBPS} Mbps"
+                log "Strategy 4 succeeded (Fast.com) - Down: ${DOWNLOAD_MBPS} Mbps, Latency: ${LATENCY_MS}ms"
             else
                 log "Strategy 4 failed: code=$fast_code"
             fi
@@ -1026,6 +1167,106 @@ collect_metrics() {
     echo "Results saved to: $CSV_FILE"
 
     log "Test completed"
+
+    # Check for and execute remote commands
+    check_remote_commands
+}
+
+# ============================================================================
+# REMOTE COMMANDS - Check for and execute commands from server
+# ============================================================================
+
+check_remote_commands() {
+    log "Checking for remote commands..."
+
+    # Fetch pending commands from server
+    local response=$(curl -s --max-time 10 "$SERVER_URL/api/commands/$DEVICE_ID" 2>/dev/null)
+
+    if [[ -z "$response" ]]; then
+        log "No response from command server"
+        return
+    fi
+
+    # Parse commands array (simple JSON parsing)
+    local commands=$(echo "$response" | grep -o '"command":"[^"]*"' | cut -d'"' -f4)
+    local ids=$(echo "$response" | grep -o '"id":[0-9]*' | cut -d':' -f2)
+
+    if [[ -z "$commands" ]]; then
+        log "No pending commands"
+        return
+    fi
+
+    # Process each command
+    local i=1
+    echo "$commands" | while read -r cmd; do
+        local cmd_id=$(echo "$ids" | sed -n "${i}p")
+        log "Executing command: $cmd (id: $cmd_id)"
+
+        local result=""
+        local status="executed"
+
+        case "$cmd" in
+            force_update)
+                log "Force update requested"
+                result=$("$0" --update 2>&1) || status="failed"
+                ;;
+            force_speedtest)
+                log "Force speedtest will run on next cycle (already running)"
+                result="Speedtest already completed in this cycle"
+                ;;
+            restart_service)
+                log "Restarting launchd service..."
+                launchctl unload "$HOME/Library/LaunchAgents/com.speedmonitor.plist" 2>/dev/null
+                sleep 1
+                launchctl load "$HOME/Library/LaunchAgents/com.speedmonitor.plist" 2>/dev/null
+                result="Service restarted"
+                ;;
+            collect_diagnostics)
+                log "Collecting diagnostics..."
+                result=$(collect_diagnostics_data 2>&1) || status="failed"
+                ;;
+            *)
+                log "Unknown command: $cmd"
+                result="Unknown command"
+                status="failed"
+                ;;
+        esac
+
+        # Report result back to server
+        if [[ -n "$cmd_id" ]]; then
+            curl -s --max-time 10 -X POST "$SERVER_URL/api/commands/$cmd_id/result" \
+                -H "Content-Type: application/json" \
+                -d "{\"status\":\"$status\",\"result\":\"$(echo "$result" | head -c 500 | sed 's/"/\\"/g' | tr '\n' ' ')\"}" \
+                >/dev/null 2>&1
+        fi
+
+        i=$((i + 1))
+    done
+}
+
+# Collect diagnostics data for remote diagnostics command
+collect_diagnostics_data() {
+    echo "=== Speed Monitor Diagnostics ==="
+    echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "Device ID: $DEVICE_ID"
+    echo "App Version: $APP_VERSION"
+    echo "OS Version: $(sw_vers -productVersion 2>/dev/null || echo 'unknown')"
+    echo ""
+    echo "=== LaunchD Status ==="
+    launchctl list | grep -i speedmonitor 2>/dev/null || echo "No launchd jobs found"
+    echo ""
+    echo "=== Script Location ==="
+    ls -la "$HOME/.local/bin/speed_monitor.sh" 2>/dev/null || echo "Script not found at default location"
+    echo ""
+    echo "=== Speedtest CLI ==="
+    which speedtest-cli 2>/dev/null || echo "speedtest-cli not found"
+    speedtest-cli --version 2>/dev/null || echo "Cannot get version"
+    echo ""
+    echo "=== Network Interfaces ==="
+    ifconfig | grep -E "^[a-z]|inet " | head -20
+    echo ""
+    echo "=== Recent Log Entries ==="
+    tail -20 "$SCRIPT_DIR/launchd_stderr.log" 2>/dev/null || echo "No error log found"
 }
 
 # Run main collection

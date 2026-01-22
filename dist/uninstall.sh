@@ -8,6 +8,7 @@ CONFIG_DIR="$HOME/.config/nkspeedtest"
 BIN_DIR="$HOME/.local/bin"
 PLIST_NAME="com.speedmonitor.plist"
 MENUBAR_PLIST_NAME="com.speedmonitor.menubar.plist"
+LISTENER_PLIST_NAME="com.speedmonitor.listener.plist"
 
 echo "=== Speed Monitor Uninstaller ==="
 echo ""
@@ -18,14 +19,17 @@ echo ""
 echo "Stopping services..."
 launchctl unload "$HOME/Library/LaunchAgents/$PLIST_NAME" 2>/dev/null || true
 launchctl unload "$HOME/Library/LaunchAgents/$MENUBAR_PLIST_NAME" 2>/dev/null || true
+launchctl unload "$HOME/Library/LaunchAgents/$LISTENER_PLIST_NAME" 2>/dev/null || true
 rm -f "$HOME/Library/LaunchAgents/$PLIST_NAME"
 rm -f "$HOME/Library/LaunchAgents/$MENUBAR_PLIST_NAME"
+rm -f "$HOME/Library/LaunchAgents/$LISTENER_PLIST_NAME"
 echo "✓ Services stopped and removed"
 
-# Kill the menu bar app
-echo "Closing SpeedMonitor app..."
+# Kill the menu bar app and listener
+echo "Closing SpeedMonitor processes..."
 killall SpeedMonitor 2>/dev/null || true
-echo "✓ App closed"
+pkill -f "command_listener.sh" 2>/dev/null || true
+echo "✓ Processes closed"
 
 # Remove the app
 echo "Removing application..."
@@ -35,6 +39,7 @@ echo "✓ SpeedMonitor.app removed"
 # Remove scripts and data
 echo "Removing data and scripts..."
 rm -f "$BIN_DIR/speed_monitor.sh"
+rm -f "$BIN_DIR/command_listener.sh"
 rm -f "$BIN_DIR/wifi_info"
 rm -rf "$SCRIPT_DIR"
 rm -rf "$CONFIG_DIR"
@@ -46,5 +51,5 @@ echo ""
 echo "Speed Monitor has been completely removed from your system."
 echo ""
 echo "To reinstall, run:"
-echo "  curl -fsSL https://raw.githubusercontent.com/hyperkishore/home-internet/main/dist/install.sh | bash"
+echo "  curl -fsSL https://home-internet.onrender.com/install.sh | bash"
 echo ""
