@@ -62,8 +62,8 @@ const limiter = rateLimit({
     return req.ip || req.connection.remoteAddress || 'unknown';
   },
   skip: (req) => {
-    // Skip rate limiting for health checks
-    return req.path === '/health';
+    // Skip rate limiting for health checks and debug endpoints
+    return req.path === '/health' || req.path.startsWith('/api/debug/');
   }
 });
 
