@@ -991,7 +991,7 @@ app.get('/api/stats/analytics', async (req, res) => {
     const whereClause = whereConditions.join(' AND ');
 
     // Run all analytics queries with the combined filter
-    const [overview, bySSID, byAP, byChannel, vpnComparison, trends] = await Promise.all([
+    const [overview, bySSID, byAP, byChannel, vpnComparison, trends, bandDistribution] = await Promise.all([
       // Overview stats
       pool.query(`
         SELECT
@@ -1077,6 +1077,17 @@ app.get('/api/stats/analytics', async (req, res) => {
         WHERE ${whereClause}
         GROUP BY date
         ORDER BY date
+      `),
+
+      // Band distribution (filtered)
+      pool.query(`
+        SELECT
+          band,
+          COUNT(*) as count,
+          ROUND(AVG(download_mbps)::numeric, 2) as avg_download
+        FROM speed_results
+        WHERE ${whereClause} AND band IS NOT NULL AND band != 'none'
+        GROUP BY band
       `)
     ]);
 
@@ -1100,6 +1111,7 @@ app.get('/api/stats/analytics', async (req, res) => {
       byChannel: byChannel.rows,
       vpnComparison: vpnComparison.rows,
       trends: trends.rows,
+      bandDistribution: bandDistribution.rows,
       filterValues: filterValues.rows[0]
     });
   } catch (err) {

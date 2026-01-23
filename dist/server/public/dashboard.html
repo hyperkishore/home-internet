@@ -2889,14 +2889,36 @@
             if (tabContent) tabContent.style.display = 'block';
 
             // Render tab-specific content if data is available
-            if (tabName === 'ssid' && analyticsData.wifi.bySSID) {
-                renderSSIDAnalytics(analyticsData.wifi);
-            } else if (tabName === 'ap' && analyticsData.wifi.byAccessPoint) {
-                renderAPAnalytics(analyticsData.wifi);
-            } else if (tabName === 'channel' && analyticsData.channels.length) {
-                renderChannelAnalytics(analyticsData.channels);
-            } else if (tabName === 'vpn' && analyticsData.vpn.comparison) {
-                renderVPNAnalysis(analyticsData.vpn);
+            // Use filtered combined data when available, otherwise fall back to unfiltered wifi data
+            const combined = analyticsData.combined || {};
+            if (tabName === 'ssid') {
+                const ssidData = combined.bySSID && combined.bySSID.length > 0
+                    ? { bySSID: combined.bySSID }
+                    : analyticsData.wifi;
+                if (ssidData.bySSID) renderSSIDAnalytics(ssidData);
+            } else if (tabName === 'ap') {
+                const apData = combined.byAP && combined.byAP.length > 0
+                    ? { byAccessPoint: combined.byAP }
+                    : analyticsData.wifi;
+                if (apData.byAccessPoint) renderAPAnalytics(apData);
+            } else if (tabName === 'channel') {
+                const channelData = combined.byChannel && combined.byChannel.length > 0
+                    ? combined.byChannel
+                    : analyticsData.channels;
+                if (channelData && channelData.length) renderChannelAnalytics(channelData);
+            } else if (tabName === 'vpn') {
+                // Use filtered VPN data
+                const vpnComp = combined.vpnComparison;
+                const filteredVPNData = vpnComp && vpnComp.length > 0
+                    ? { comparison: vpnComp.map(v => ({
+                        mode: v.vpn_status === 'connected' ? 'VPN On' : 'VPN Off',
+                        test_count: parseInt(v.test_count),
+                        avg_download: v.avg_download,
+                        avg_upload: v.avg_upload,
+                        avg_latency: v.avg_latency
+                      })) }
+                    : analyticsData.vpn;
+                if (filteredVPNData.comparison) renderVPNAnalysis(filteredVPNData);
             }
         }
 
@@ -2957,8 +2979,26 @@
                 } else {
                     renderTrendChart(trends);
                 }
-                renderBandChart(wifi);
-                renderVPNChart(vpnData);
+
+                // Use filtered band distribution from combined analytics
+                const filteredBandData = combined.bandDistribution && combined.bandDistribution.length > 0
+                    ? { bandDistribution: combined.bandDistribution }
+                    : wifi;
+                renderBandChart(filteredBandData);
+
+                // Use filtered VPN comparison from combined analytics
+                // Convert vpnComparison format (vpn_status) to comparison format (mode)
+                const filteredVPNData = combined.vpnComparison && combined.vpnComparison.length > 0
+                    ? { comparison: combined.vpnComparison.map(v => ({
+                        mode: v.vpn_status === 'connected' ? 'VPN On' : 'VPN Off',
+                        test_count: parseInt(v.test_count),
+                        avg_download: v.avg_download,
+                        avg_upload: v.avg_upload,
+                        avg_latency: v.avg_latency
+                      })) }
+                    : vpnData;
+                renderVPNChart(filteredVPNData);
+
                 renderTopAPs(combined.bySSID && combined.bySSID.length > 0 ? { bySSID: combined.bySSID } : wifi);
                 renderProblemDevices();
 
@@ -2980,9 +3020,9 @@
                 if (activeTab) {
                     const tab = activeTab.dataset.tab;
                     if (tab === 'ssid') renderSSIDAnalytics(combined.bySSID && combined.bySSID.length > 0 ? { bySSID: combined.bySSID } : wifi);
-                    else if (tab === 'ap') renderAPAnalytics(combined.byAP && combined.byAP.length > 0 ? { byAP: combined.byAP } : wifi);
+                    else if (tab === 'ap') renderAPAnalytics(combined.byAP && combined.byAP.length > 0 ? { byAccessPoint: combined.byAP } : wifi);
                     else if (tab === 'channel') renderChannelAnalytics(combined.byChannel && combined.byChannel.length > 0 ? combined.byChannel : channels);
-                    else if (tab === 'vpn') renderVPNAnalysis(vpnData);
+                    else if (tab === 'vpn') renderVPNAnalysis(filteredVPNData);
                 }
             } catch (err) {
                 console.error('Error loading analytics:', err);
