@@ -4198,6 +4198,7 @@
                     document.getElementById('detailMCS').textContent = latest.mcs_index >= 0 ? latest.mcs_index : '-';
                     document.getElementById('detailRoam').textContent = latest.roam_count || '0';
                     document.getElementById('detailBSSID').textContent = latest.bssid || '-';
+                    document.getElementById('detailAP').textContent = latest.ap_name || latest.bssid || '-';
 
                     // VPN & Network from latest test
                     document.getElementById('detailVPNStatus').innerHTML = latest.vpn_status === 'connected'

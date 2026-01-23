@@ -1315,7 +1315,10 @@ app.get('/api/devices/:device_id/health', async (req, res) => {
 
     res.json({
       stats: s,
-      recentTests: recentTests.rows,
+      recentTests: recentTests.rows.map(test => ({
+        ...test,
+        ap_name: lookupAPName(test.bssid)
+      })),
       healthScore: Math.max(0, healthScore)
     });
   } catch (err) {
@@ -1615,10 +1618,13 @@ app.get('/api/my/:email', async (req, res) => {
     res.json({
       found: true,
       email,
-      devices: devices.rows,
+      devices: devices.rows.map(d => ({ ...d, ap_name: lookupAPName(d.bssid) })),
       stats: s,
       timeline: timeline.rows,
-      recentTests: recentTests.rows,
+      recentTests: recentTests.rows.map(test => ({
+        ...test,
+        ap_name: lookupAPName(test.bssid)
+      })),
       healthScore: Math.max(0, healthScore),
       issues,
       recommendations
