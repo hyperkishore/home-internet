@@ -1,96 +1,70 @@
 #!/bin/bash
-# Speed Monitor v3.1.43 - One-line installer for employees
+# Speed Monitor v3.1.45 - One-line installer for employees
 # Install:   bash <(curl -fsSL https://home-internet.onrender.com/install.sh)
-# Update:    bash <(curl -fsSL https://home-internet.onrender.com/install.sh) --force
 # Uninstall: bash <(curl -fsSL https://home-internet.onrender.com/uninstall.sh)
 
 set -e
 
-# Parse command line arguments
-FORCE_MODE=false
-for arg in "$@"; do
-    case $arg in
-        --force|-f)
-            FORCE_MODE=true
-            ;;
-    esac
-done
-
 SERVER_URL="https://home-internet.onrender.com"
-DOWNLOAD_URL="$SERVER_URL"  # Files hosted on Render server
+GITHUB_RAW="https://raw.githubusercontent.com/hyperkishore/home-internet/main"
+DOWNLOAD_URL="$SERVER_URL"  # For install.sh and app.zip hosted on server
 SCRIPT_DIR="$HOME/.local/share/nkspeedtest"
 CONFIG_DIR="$HOME/.config/nkspeedtest"
 BIN_DIR="$HOME/.local/bin"
 PLIST_NAME="com.speedmonitor.plist"
 MENUBAR_PLIST_NAME="com.speedmonitor.menubar.plist"
-LISTENER_PLIST_NAME="com.speedmonitor.listener.plist"
 
-echo "=== Speed Monitor v3.1.43 Installer ==="
-if [[ "$FORCE_MODE" == "true" ]]; then
-    echo "  (Running in non-interactive/force mode)"
-fi
+echo "=== Speed Monitor v3.1.45 Installer ==="
 echo ""
 
 # =============================================================================
 # STEP 1: FULL CLEANUP FIRST - Remove ALL old installations before anything else
 # =============================================================================
-echo "Step 1: Removing all old Speed Monitor installations..."
+echo "Step 1: Removing ALL old Speed Monitor installations..."
 
-# Kill any running SpeedMonitor processes
+# Force kill any running SpeedMonitor processes (multiple attempts)
 echo "  Stopping running processes..."
-pkill -x "SpeedMonitor" 2>/dev/null || true
-pkill -f "speed_monitor.sh" 2>/dev/null || true
-sleep 1
+pkill -9 -x "SpeedMonitor" 2>/dev/null || true
+pkill -9 -f "SpeedMonitor.app" 2>/dev/null || true
+pkill -9 -f "speed_monitor.sh" 2>/dev/null || true
+killall "SpeedMonitor" 2>/dev/null || true
+sleep 2
 
-# Unload and REMOVE all launchd services
-echo "  Removing launchd services..."
+# Unload ALL launchd services (check all possible plist names)
+echo "  Removing ALL launchd services..."
+launchctl bootout gui/$(id -u) "$HOME/Library/LaunchAgents/$PLIST_NAME" 2>/dev/null || true
+launchctl bootout gui/$(id -u) "$HOME/Library/LaunchAgents/$MENUBAR_PLIST_NAME" 2>/dev/null || true
 launchctl unload "$HOME/Library/LaunchAgents/$PLIST_NAME" 2>/dev/null || true
 launchctl unload "$HOME/Library/LaunchAgents/$MENUBAR_PLIST_NAME" 2>/dev/null || true
-launchctl unload "$HOME/Library/LaunchAgents/$LISTENER_PLIST_NAME" 2>/dev/null || true
+launchctl unload "$HOME/Library/LaunchAgents/com.nkspeedtest.plist" 2>/dev/null || true
 rm -f "$HOME/Library/LaunchAgents/$PLIST_NAME" 2>/dev/null || true
 rm -f "$HOME/Library/LaunchAgents/$MENUBAR_PLIST_NAME" 2>/dev/null || true
-rm -f "$HOME/Library/LaunchAgents/$LISTENER_PLIST_NAME" 2>/dev/null || true
+rm -f "$HOME/Library/LaunchAgents/com.nkspeedtest.plist" 2>/dev/null || true
 
 # Remove scripts from ~/.local/bin (curl install location)
 echo "  Removing scripts from ~/.local/bin..."
 rm -f "$BIN_DIR/speed_monitor.sh" 2>/dev/null || true
-rm -f "$BIN_DIR/command_listener.sh" 2>/dev/null || true
 rm -f "$BIN_DIR/wifi_info" 2>/dev/null || true
+rm -f "$BIN_DIR/nkspeedtest" 2>/dev/null || true
 
 # Remove scripts from /usr/local/speedmonitor/bin (PKG install location)
-if [[ -d "/usr/local/speedmonitor/bin" ]]; then
-    echo "  Removing scripts from /usr/local/speedmonitor/bin..."
-    rm -f /usr/local/speedmonitor/bin/speed_monitor.sh 2>/dev/null || true
-    rm -f /usr/local/speedmonitor/bin/wifi_info 2>/dev/null || true
-fi
+echo "  Removing scripts from /usr/local/speedmonitor/bin..."
+rm -f /usr/local/speedmonitor/bin/speed_monitor.sh 2>/dev/null || true
+rm -f /usr/local/speedmonitor/bin/wifi_info 2>/dev/null || true
+# Remove entire PKG directory if empty after cleanup
+rmdir /usr/local/speedmonitor/bin 2>/dev/null || true
+rmdir /usr/local/speedmonitor/lib 2>/dev/null || true
+rmdir /usr/local/speedmonitor 2>/dev/null || true
 
 # Remove SpeedMonitor.app from ALL possible locations
-echo "  Removing SpeedMonitor.app from all locations..."
+echo "  Removing SpeedMonitor.app..."
+rm -rf /Applications/SpeedMonitor.app 2>/dev/null || true
+rm -rf "$HOME/Applications/SpeedMonitor.app" 2>/dev/null || true
+rm -rf /tmp/SpeedMonitor.app 2>/dev/null || true
 
-# Common installation locations
-APP_LOCATIONS=(
-    "/Applications/SpeedMonitor.app"
-    "$HOME/Applications/SpeedMonitor.app"
-    "/usr/local/speedmonitor/lib/SpeedMonitor.app"
-)
-
-# Remove from known locations
-for loc in "${APP_LOCATIONS[@]}"; do
-    if [[ -d "$loc" ]]; then
-        echo "    Found at: $loc"
-        rm -rf "$loc" 2>/dev/null || sudo rm -rf "$loc" 2>/dev/null || true
-    fi
-done
-
-# Use Spotlight to find any other instances
-if command -v mdfind &> /dev/null; then
-    while IFS= read -r app_path; do
-        if [[ -d "$app_path" && "$app_path" == *"SpeedMonitor.app" ]]; then
-            echo "    Found at: $app_path"
-            rm -rf "$app_path" 2>/dev/null || sudo rm -rf "$app_path" 2>/dev/null || true
-        fi
-    done < <(mdfind "kMDItemKind == 'Application'" -name "SpeedMonitor" 2>/dev/null)
-fi
+# Remove old SwiftBar plugins (legacy)
+echo "  Removing legacy SwiftBar plugins..."
+rm -f "$HOME/Library/Application Support/SwiftBar/Plugins/nkspeedtest"*.sh 2>/dev/null || true
 
 # Remove old data files (but preserve email and device_id)
 echo "  Cleaning data directory (preserving identity)..."
@@ -99,8 +73,24 @@ rm -f "$SCRIPT_DIR/launchd_stderr.log" 2>/dev/null || true
 rm -f "$SCRIPT_DIR/menubar_stdout.log" 2>/dev/null || true
 rm -f "$SCRIPT_DIR/menubar_stderr.log" 2>/dev/null || true
 rm -f "$SCRIPT_DIR/wifi_info.swift" 2>/dev/null || true
+rm -f "$SCRIPT_DIR/update.log" 2>/dev/null || true
+rm -f "$SCRIPT_DIR/prev_interface_stats" 2>/dev/null || true
+rm -f "$SCRIPT_DIR/prev_tcp_retransmits" 2>/dev/null || true
+rm -f "$SCRIPT_DIR/prev_bssid" 2>/dev/null || true
+rm -f "$SCRIPT_DIR/roam_count" 2>/dev/null || true
 
-echo "✓ Old installations removed"
+# Remove app caches
+echo "  Clearing app caches..."
+rm -rf "$HOME/Library/Caches/com.speedmonitor" 2>/dev/null || true
+rm -rf "$HOME/Library/Caches/SpeedMonitor" 2>/dev/null || true
+
+# Remove temporary files
+rm -f /tmp/SpeedMonitor.app.zip 2>/dev/null || true
+rm -f /tmp/speed_monitor.sh 2>/dev/null || true
+rm -f /tmp/install.sh 2>/dev/null || true
+rm -f /tmp/speedmonitor_repair.sh 2>/dev/null || true
+
+echo "✓ All old installations completely removed"
 echo ""
 
 # =============================================================================
@@ -113,99 +103,78 @@ mkdir -p "$SCRIPT_DIR" "$BIN_DIR" "$CONFIG_DIR"
 # =============================================================================
 USER_EMAIL=""
 
-# In force mode, use existing email without prompting
-if [[ "$FORCE_MODE" == "true" ]]; then
-    if [[ -f "$CONFIG_DIR/user_email" ]]; then
-        USER_EMAIL=$(cat "$CONFIG_DIR/user_email" 2>/dev/null | xargs)
-        if [[ -n "$USER_EMAIL" ]] && [[ "$USER_EMAIL" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+# Check if email already exists from previous installation
+if [[ -f "$CONFIG_DIR/user_email" ]]; then
+    EXISTING_EMAIL=$(cat "$CONFIG_DIR/user_email" 2>/dev/null | xargs)
+    if [[ -n "$EXISTING_EMAIL" ]] && [[ "$EXISTING_EMAIL" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+        echo "Found existing email: $EXISTING_EMAIL"
+        echo "Press Enter to keep this email, or type a new one:"
+
+        if [[ -t 0 ]]; then
+            read -p "Email [$EXISTING_EMAIL]: " NEW_EMAIL
+        else
+            read -p "Email [$EXISTING_EMAIL]: " NEW_EMAIL < /dev/tty 2>/dev/null || NEW_EMAIL=""
+        fi
+
+        NEW_EMAIL=$(echo "$NEW_EMAIL" | xargs)
+        if [[ -z "$NEW_EMAIL" ]]; then
+            USER_EMAIL="$EXISTING_EMAIL"
             echo "✓ Using existing email: $USER_EMAIL"
         else
-            # Invalid or missing email in force mode - use hostname
-            USER_EMAIL="$(hostname)@unknown.local"
-            echo "⚠ No valid email found, using: $USER_EMAIL"
-        fi
-    else
-        # No email file exists in force mode - use hostname
-        USER_EMAIL="$(hostname)@unknown.local"
-        echo "⚠ No email configured, using: $USER_EMAIL"
-    fi
-    echo "$USER_EMAIL" > "$CONFIG_DIR/user_email"
-    echo ""
-else
-    # Interactive mode - prompt for email
-    # Check if email already exists from previous installation
-    if [[ -f "$CONFIG_DIR/user_email" ]]; then
-        EXISTING_EMAIL=$(cat "$CONFIG_DIR/user_email" 2>/dev/null | xargs)
-        if [[ -n "$EXISTING_EMAIL" ]] && [[ "$EXISTING_EMAIL" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
-            echo "Found existing email: $EXISTING_EMAIL"
-            echo "Press Enter to keep this email, or type a new one:"
-
-            if [[ -t 0 ]]; then
-                read -p "Email [$EXISTING_EMAIL]: " NEW_EMAIL
-            else
-                read -p "Email [$EXISTING_EMAIL]: " NEW_EMAIL < /dev/tty 2>/dev/null || NEW_EMAIL=""
-            fi
-
-            NEW_EMAIL=$(echo "$NEW_EMAIL" | xargs)
-            if [[ -z "$NEW_EMAIL" ]]; then
-                USER_EMAIL="$EXISTING_EMAIL"
-                echo "✓ Using existing email: $USER_EMAIL"
-            else
-                USER_EMAIL="$NEW_EMAIL"
-            fi
+            USER_EMAIL="$NEW_EMAIL"
         fi
     fi
-
-    # If no valid email yet, prompt for one
-    if [[ -z "$USER_EMAIL" ]]; then
-        echo "Please enter your Hyperverge email address:"
-        echo "(This is required to identify your device in the dashboard)"
-        echo ""
-
-        MAX_ATTEMPTS=3
-        ATTEMPT=0
-
-        while [[ $ATTEMPT -lt $MAX_ATTEMPTS ]]; do
-            ATTEMPT=$((ATTEMPT + 1))
-
-            if [[ -t 0 ]]; then
-                read -p "Email: " USER_EMAIL
-            else
-                read -p "Email: " USER_EMAIL < /dev/tty 2>/dev/null || {
-                    echo "Error: Cannot read input. Please run the installer differently:"
-                    echo "  curl -fsSL https://home-internet.onrender.com/install.sh -o /tmp/install.sh && bash /tmp/install.sh"
-                    exit 1
-                }
-            fi
-
-            USER_EMAIL=$(echo "$USER_EMAIL" | xargs)
-
-            if [[ -z "$USER_EMAIL" ]]; then
-                echo "❌ Email cannot be empty. Please try again. (Attempt $ATTEMPT/$MAX_ATTEMPTS)"
-                continue
-            fi
-
-            if [[ ! "$USER_EMAIL" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
-                echo "❌ Invalid email format. Please enter a valid email. (Attempt $ATTEMPT/$MAX_ATTEMPTS)"
-                continue
-            fi
-
-            break
-        done
-    fi
-
-    # Final validation
-    if [[ -z "$USER_EMAIL" ]] || [[ ! "$USER_EMAIL" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
-        echo ""
-        echo "❌ Error: A valid email address is required to proceed."
-        echo "Please run the installer again and provide your email."
-        exit 1
-    fi
-
-    echo "✓ Email: $USER_EMAIL"
-    echo "$USER_EMAIL" > "$CONFIG_DIR/user_email"
-    echo ""
 fi
+
+# If no valid email yet, prompt for one
+if [[ -z "$USER_EMAIL" ]]; then
+    echo "Please enter your Hyperverge email address:"
+    echo "(This is required to identify your device in the dashboard)"
+    echo ""
+
+    MAX_ATTEMPTS=3
+    ATTEMPT=0
+
+    while [[ $ATTEMPT -lt $MAX_ATTEMPTS ]]; do
+        ATTEMPT=$((ATTEMPT + 1))
+
+        if [[ -t 0 ]]; then
+            read -p "Email: " USER_EMAIL
+        else
+            read -p "Email: " USER_EMAIL < /dev/tty 2>/dev/null || {
+                echo "Error: Cannot read input. Please run the installer differently:"
+                echo "  curl -fsSL https://home-internet.onrender.com/install.sh -o /tmp/install.sh && bash /tmp/install.sh"
+                exit 1
+            }
+        fi
+
+        USER_EMAIL=$(echo "$USER_EMAIL" | xargs)
+
+        if [[ -z "$USER_EMAIL" ]]; then
+            echo "❌ Email cannot be empty. Please try again. (Attempt $ATTEMPT/$MAX_ATTEMPTS)"
+            continue
+        fi
+
+        if [[ ! "$USER_EMAIL" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+            echo "❌ Invalid email format. Please enter a valid email. (Attempt $ATTEMPT/$MAX_ATTEMPTS)"
+            continue
+        fi
+
+        break
+    done
+fi
+
+# Final validation
+if [[ -z "$USER_EMAIL" ]] || [[ ! "$USER_EMAIL" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+    echo ""
+    echo "❌ Error: A valid email address is required to proceed."
+    echo "Please run the installer again and provide your email."
+    exit 1
+fi
+
+echo "✓ Email: $USER_EMAIL"
+echo "$USER_EMAIL" > "$CONFIG_DIR/user_email"
+echo ""
 
 # =============================================================================
 # STEP 4: Install dependencies
@@ -237,23 +206,22 @@ echo ""
 # =============================================================================
 # STEP 5: Download and install fresh components
 # =============================================================================
-echo "Step 3: Installing Speed Monitor v3.1.42..."
+echo "Step 3: Installing Speed Monitor v3.1.45..."
 
-# Download speed_monitor.sh
-echo "  Downloading speed_monitor.sh..."
-curl -fsSL "$DOWNLOAD_URL/speed_monitor.sh" -o "$BIN_DIR/speed_monitor.sh"
+# Download speed_monitor.sh from GitHub (most reliable source)
+echo "  Downloading speed_monitor.sh from GitHub..."
+curl -fsSL --max-time 60 "$GITHUB_RAW/speed_monitor.sh" -o "$BIN_DIR/speed_monitor.sh"
 chmod +x "$BIN_DIR/speed_monitor.sh"
+
+# Verify the downloaded script has the correct version
+DOWNLOADED_VERSION=$(grep "APP_VERSION=" "$BIN_DIR/speed_monitor.sh" | head -1 | cut -d'"' -f2)
+echo "  Downloaded script version: $DOWNLOADED_VERSION"
 
 # Verify download
 if [[ ! -f "$BIN_DIR/speed_monitor.sh" ]]; then
     echo "❌ Failed to download speed_monitor.sh"
     exit 1
 fi
-
-# Download command_listener.sh (active command polling daemon)
-echo "  Downloading command_listener.sh..."
-curl -fsSL "$DOWNLOAD_URL/command_listener.sh" -o "$BIN_DIR/command_listener.sh"
-chmod +x "$BIN_DIR/command_listener.sh"
 
 # Also install to PKG location if directory exists (for backwards compatibility)
 if [[ -d "/usr/local/speedmonitor/bin" ]]; then
@@ -262,23 +230,17 @@ if [[ -d "/usr/local/speedmonitor/bin" ]]; then
     chmod +x /usr/local/speedmonitor/bin/speed_monitor.sh 2>/dev/null || true
 fi
 
-# Download and install SpeedMonitor.app
-echo "  Downloading SpeedMonitor.app..."
-curl -fsSL "$DOWNLOAD_URL/SpeedMonitor.app.zip" -o /tmp/SpeedMonitor.app.zip
+# Download and install SpeedMonitor.app from GitHub
+echo "  Downloading SpeedMonitor.app from GitHub..."
+curl -fsSL --max-time 120 "$GITHUB_RAW/dist/SpeedMonitor.app.zip" -o /tmp/SpeedMonitor.app.zip
 
 if [[ -f /tmp/SpeedMonitor.app.zip ]]; then
     unzip -o /tmp/SpeedMonitor.app.zip -d /tmp/ > /dev/null 2>&1
     if [[ -d /tmp/SpeedMonitor.app ]]; then
-        # Remove existing app first (handles permission issues)
-        if [[ -d /Applications/SpeedMonitor.app ]]; then
-            rm -rf /Applications/SpeedMonitor.app 2>/dev/null || sudo rm -rf /Applications/SpeedMonitor.app 2>/dev/null || true
-        fi
-
-        # Copy new app
-        cp -R /tmp/SpeedMonitor.app /Applications/ 2>/dev/null || sudo cp -R /tmp/SpeedMonitor.app /Applications/
+        cp -r /tmp/SpeedMonitor.app /Applications/
 
         # Remove quarantine flag (Gatekeeper)
-        xattr -cr /Applications/SpeedMonitor.app 2>/dev/null || sudo xattr -cr /Applications/SpeedMonitor.app 2>/dev/null || true
+        xattr -cr /Applications/SpeedMonitor.app 2>/dev/null || true
 
         # Ad-hoc code sign
         codesign --force --deep --sign - /Applications/SpeedMonitor.app 2>/dev/null || true
@@ -293,13 +255,13 @@ else
     echo "  ⚠ Failed to download SpeedMonitor.app"
 fi
 
-# Optional: wifi_info Swift helper (backup)
+# Optional: wifi_info Swift helper (backup for older macOS)
 if command -v swiftc &> /dev/null; then
     echo "  Setting up WiFi helper..."
     if [[ -f "/opt/homebrew/bin/wifi_info" ]]; then
         ln -sf "/opt/homebrew/bin/wifi_info" "$BIN_DIR/wifi_info"
     else
-        curl -fsSL "$DOWNLOAD_URL/wifi_info.swift" -o "$SCRIPT_DIR/wifi_info.swift" 2>/dev/null || true
+        curl -fsSL "$GITHUB_RAW/dist/src/wifi_info.swift" -o "$SCRIPT_DIR/wifi_info.swift" 2>/dev/null || true
         swiftc -O -o "$BIN_DIR/wifi_info" "$SCRIPT_DIR/wifi_info.swift" -framework CoreWLAN -framework Foundation 2>/dev/null || true
     fi
 fi
@@ -311,6 +273,16 @@ echo ""
 # STEP 6: Create and load launchd services
 # =============================================================================
 echo "Step 4: Setting up background services..."
+
+# Detect Homebrew location dynamically (Apple Silicon vs Intel)
+if [[ -d "/opt/homebrew/bin" ]]; then
+    BREW_PATH="/opt/homebrew/bin"
+elif [[ -d "/usr/local/bin" ]]; then
+    BREW_PATH="/usr/local/bin"
+else
+    BREW_PATH="/opt/homebrew/bin"  # Default fallback
+fi
+echo "  Detected Homebrew path: $BREW_PATH"
 
 # Create launchd plist for speed monitor
 cat > "$HOME/Library/LaunchAgents/$PLIST_NAME" << EOF
@@ -335,7 +307,7 @@ cat > "$HOME/Library/LaunchAgents/$PLIST_NAME" << EOF
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <string>$BREW_PATH:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
         <key>SPEED_MONITOR_SERVER</key>
         <string>$SERVER_URL</string>
     </dict>
@@ -370,42 +342,20 @@ if [[ -d "/Applications/SpeedMonitor.app" ]]; then
 EOF
 
     launchctl load "$HOME/Library/LaunchAgents/$MENUBAR_PLIST_NAME"
-    echo "  ✓ Menu bar app started via launchd"
+
+    # Launch the app
+    if open /Applications/SpeedMonitor.app 2>/dev/null; then
+        echo "  ✓ Menu bar app launched"
+    else
+        nohup /Applications/SpeedMonitor.app/Contents/MacOS/SpeedMonitor &>/dev/null &
+        sleep 1
+        if pgrep -x "SpeedMonitor" > /dev/null; then
+            echo "  ✓ Menu bar app launched"
+        else
+            echo "  ⚠ Please open SpeedMonitor.app manually from Applications"
+        fi
+    fi
 fi
-
-# Create launchd plist for command listener (polls every 30 seconds for remote commands)
-cat > "$HOME/Library/LaunchAgents/$LISTENER_PLIST_NAME" << EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.speedmonitor.listener</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>$BIN_DIR/command_listener.sh</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>$SCRIPT_DIR/listener_stdout.log</string>
-    <key>StandardErrorPath</key>
-    <string>$SCRIPT_DIR/listener_stderr.log</string>
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>PATH</key>
-        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
-        <key>SPEED_MONITOR_SERVER</key>
-        <string>$SERVER_URL</string>
-    </dict>
-</dict>
-</plist>
-EOF
-
-launchctl load "$HOME/Library/LaunchAgents/$LISTENER_PLIST_NAME"
-echo "  ✓ Command listener started (polls every 30s)"
 
 echo "✓ Services configured"
 echo ""
@@ -431,29 +381,15 @@ echo " Done!"
 # =============================================================================
 echo ""
 echo "=========================================="
-echo "   Speed Monitor v3.1.43 Installed!"
+echo "   Speed Monitor v3.1.45 Installed!"
 echo "=========================================="
 echo ""
 echo "What's running:"
 echo "  • Speed tests every 10 minutes"
-echo "  • Command listener (polls every 30 seconds)"
 echo "  • Results uploaded to: $SERVER_URL"
 echo "  • Menu bar shows live stats"
 echo ""
 echo "Dashboard: $SERVER_URL"
-echo ""
-echo "=========================================="
-echo "   IMPORTANT: Grant Location Permission"
-echo "=========================================="
-echo ""
-echo "To see your actual WiFi network name (e.g., 'HomeNetwork_5G'):"
-echo ""
-echo "  1. Click the SpeedMonitor icon in your menu bar"
-echo "  2. A macOS dialog will ask for Location permission"
-echo "  3. Click 'Allow' to grant access"
-echo ""
-echo "Without Location permission, your WiFi will show as"
-echo "just 'WiFi' instead of the actual network name."
 echo ""
 echo "Commands:"
 echo "  Run test now:  $BIN_DIR/speed_monitor.sh"
