@@ -80,7 +80,13 @@ const AP_PREFIX_MAP = {
   'dc:b7:ac:fb:f2': 'CNPWK9T1M6',   // CNPWK9T1M6
   'dc:b7:ac:00:88': 'CNPYK9T3W2',   // CNPYK9T3W2
   'dc:b7:ac:01:03': 'CNPYK9T3X4',   // CNPYK9T3X4
-  'dc:b7:ac:00:bd': 'CNPYK9T3XJ'    // CNPYK9T3XJ
+  'dc:b7:ac:00:bd': 'CNPYK9T3XJ',   // CNPYK9T3XJ
+
+  // AP21 devices (54:f0:b1 prefix) - HypervergeHQ / Hyperverge-Guest
+  '54:f0:b1:07:c2': '2F AP-3',      // 2F AP-3 (2.4G: c0, 5G: d0)
+  '54:f0:b1:02:98': '2F-AP-1',      // 2F-AP-1 (2.4G: 20, 5G: 30)
+  '54:f0:b1:02:79': '3F AP-2',      // 3F AP-2 (2.4G: a0, 5G: b0)
+  '54:f0:b1:02:53': 'VNTTM1K0DX'    // VNTTM1K0DX (2.4G: c0, 5G: d0)
 };
 
 // Lookup AP name by BSSID prefix
