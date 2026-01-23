@@ -1616,6 +1616,176 @@ app.get('/api/my/:email', async (req, res) => {
   }
 });
 
+// API: Full historical data for employee dashboard
+app.get('/api/my/:email/history', async (req, res) => {
+  const email = decodeURIComponent(req.params.email).toLowerCase();
+  const { page = 1, limit = 50, sort = 'timestamp_utc', order = 'desc', search = '' } = req.query;
+  const offset = (parseInt(page) - 1) * parseInt(limit);
+
+  try {
+    // Find devices for this email
+    const devices = await pool.query(`
+      SELECT DISTINCT device_id
+      FROM speed_results
+      WHERE LOWER(user_email) = $1
+    `, [email]);
+
+    if (devices.rows.length === 0) {
+      return res.json({ found: false, email, data: [], total: 0 });
+    }
+
+    const deviceIds = devices.rows.map(d => d.device_id);
+
+    // Build search condition
+    let searchCondition = '';
+    const params = [deviceIds];
+    if (search) {
+      searchCondition = `AND (ssid ILIKE $2 OR band ILIKE $2 OR vpn_status ILIKE $2 OR hostname ILIKE $2)`;
+      params.push(`%${search}%`);
+    }
+
+    // Validate sort column to prevent SQL injection
+    const validSortColumns = ['timestamp_utc', 'download_mbps', 'upload_mbps', 'latency_ms', 'jitter_ms', 'rssi_dbm', 'ssid', 'band', 'channel', 'vpn_status'];
+    const sortColumn = validSortColumns.includes(sort) ? sort : 'timestamp_utc';
+    const sortOrder = order.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+
+    // Get total count
+    const countResult = await pool.query(`
+      SELECT COUNT(*) as total
+      FROM speed_results
+      WHERE device_id = ANY($1) ${searchCondition}
+    `, params);
+
+    // Get paginated data
+    const dataQuery = `
+      SELECT
+        id,
+        timestamp_utc,
+        device_id,
+        hostname,
+        download_mbps,
+        upload_mbps,
+        latency_ms,
+        jitter_ms,
+        packet_loss_pct,
+        ssid,
+        bssid,
+        band,
+        channel,
+        rssi_dbm,
+        vpn_status,
+        vpn_name,
+        status
+      FROM speed_results
+      WHERE device_id = ANY($1) ${searchCondition}
+      ORDER BY ${sortColumn} ${sortOrder}
+      LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+    `;
+
+    const data = await pool.query(dataQuery, [...params, parseInt(limit), offset]);
+
+    // Get summary stats for all data
+    const statsResult = await pool.query(`
+      SELECT
+        COUNT(*) as total_tests,
+        ROUND(AVG(download_mbps)::numeric, 2) as avg_download,
+        ROUND(AVG(upload_mbps)::numeric, 2) as avg_upload,
+        ROUND(AVG(latency_ms)::numeric, 2) as avg_latency,
+        ROUND(AVG(jitter_ms)::numeric, 2) as avg_jitter,
+        ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY download_mbps)::numeric, 2) as median_download,
+        MIN(timestamp_utc) as first_test,
+        MAX(timestamp_utc) as last_test
+      FROM speed_results
+      WHERE device_id = ANY($1)
+    `, [deviceIds]);
+
+    res.json({
+      found: true,
+      email,
+      data: data.rows,
+      total: parseInt(countResult.rows[0].total),
+      page: parseInt(page),
+      limit: parseInt(limit),
+      totalPages: Math.ceil(parseInt(countResult.rows[0].total) / parseInt(limit)),
+      stats: statsResult.rows[0]
+    });
+  } catch (err) {
+    console.error('Error fetching employee history:', err);
+    res.status(500).json({ error: 'Failed to fetch history' });
+  }
+});
+
+// API: Export employee data as CSV
+app.get('/api/my/:email/export', async (req, res) => {
+  const email = decodeURIComponent(req.params.email).toLowerCase();
+
+  try {
+    const devices = await pool.query(`
+      SELECT DISTINCT device_id
+      FROM speed_results
+      WHERE LOWER(user_email) = $1
+    `, [email]);
+
+    if (devices.rows.length === 0) {
+      return res.status(404).json({ error: 'No data found' });
+    }
+
+    const deviceIds = devices.rows.map(d => d.device_id);
+
+    const data = await pool.query(`
+      SELECT
+        timestamp_utc,
+        hostname,
+        download_mbps,
+        upload_mbps,
+        latency_ms,
+        jitter_ms,
+        packet_loss_pct,
+        ssid,
+        band,
+        channel,
+        rssi_dbm,
+        vpn_status,
+        vpn_name,
+        status
+      FROM speed_results
+      WHERE device_id = ANY($1)
+      ORDER BY timestamp_utc DESC
+    `, [deviceIds]);
+
+    // Generate CSV
+    const headers = ['Timestamp', 'Hostname', 'Download (Mbps)', 'Upload (Mbps)', 'Latency (ms)', 'Jitter (ms)', 'Packet Loss (%)', 'SSID', 'Band', 'Channel', 'RSSI (dBm)', 'VPN Status', 'VPN Name', 'Status'];
+    const csvRows = [headers.join(',')];
+
+    data.rows.forEach(row => {
+      const values = [
+        row.timestamp_utc,
+        row.hostname || '',
+        row.download_mbps || '',
+        row.upload_mbps || '',
+        row.latency_ms || '',
+        row.jitter_ms || '',
+        row.packet_loss_pct || '',
+        `"${(row.ssid || '').replace(/"/g, '""')}"`,
+        row.band || '',
+        row.channel || '',
+        row.rssi_dbm || '',
+        row.vpn_status || '',
+        row.vpn_name || '',
+        row.status || ''
+      ];
+      csvRows.push(values.join(','));
+    });
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=speed_monitor_${email.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().split('T')[0]}.csv`);
+    res.send(csvRows.join('\n'));
+  } catch (err) {
+    console.error('Error exporting employee data:', err);
+    res.status(500).json({ error: 'Failed to export data' });
+  }
+});
+
 // API: Alert configuration
 app.post('/api/alerts/config', async (req, res) => {
   const { name, type, webhook_url, channel_name, threshold_download_mbps, threshold_jitter_ms, threshold_packet_loss_pct } = req.body;

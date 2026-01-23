@@ -356,6 +356,147 @@
 
         .test-row:last-child { border-bottom: none; }
 
+        /* Full History Table */
+        .history-section {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            margin-bottom: 24px;
+            overflow: hidden;
+        }
+
+        .history-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .history-title {
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .history-stats {
+            font-size: 0.75rem;
+            color: var(--muted);
+        }
+
+        .history-controls {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .search-input {
+            padding: 8px 12px;
+            background: var(--background);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--foreground);
+            font-size: 0.8125rem;
+            width: 200px;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .history-table-wrapper {
+            overflow-x: auto;
+        }
+
+        .history-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8125rem;
+        }
+
+        .history-table th {
+            text-align: left;
+            padding: 12px 16px;
+            background: var(--background);
+            border-bottom: 1px solid var(--border);
+            color: var(--muted);
+            font-weight: 500;
+            white-space: nowrap;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .history-table th:hover {
+            color: var(--foreground);
+        }
+
+        .history-table th.sorted {
+            color: var(--primary);
+        }
+
+        .history-table th .sort-icon {
+            margin-left: 4px;
+            opacity: 0.5;
+        }
+
+        .history-table th.sorted .sort-icon {
+            opacity: 1;
+        }
+
+        .history-table td {
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+
+        .history-table tr:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .history-table .speed-down { color: var(--primary); }
+        .history-table .speed-up { color: var(--success); }
+        .history-table .vpn-on { color: var(--success); }
+        .history-table .vpn-off { color: var(--destructive); }
+        .history-table .signal-good { color: var(--success); }
+        .history-table .signal-fair { color: var(--warning); }
+        .history-table .signal-weak { color: var(--destructive); }
+
+        .pagination {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 20px;
+            border-top: 1px solid var(--border);
+            font-size: 0.8125rem;
+        }
+
+        .pagination-info {
+            color: var(--muted);
+        }
+
+        .pagination-controls {
+            display: flex;
+            gap: 4px;
+        }
+
+        .page-btn {
+            padding: 6px 12px;
+            background: var(--background);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--foreground);
+            cursor: pointer;
+            font-size: 0.75rem;
+        }
+
+        .page-btn:hover { background: var(--border); }
+        .page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .page-btn.active { background: var(--primary); border-color: var(--primary); }
+
         .test-time {
             color: var(--muted);
             min-width: 80px;
@@ -718,29 +859,52 @@
                 `;
             }
 
-            // Recent Tests
-            if (data.recentTests && data.recentTests.length > 0) {
-                html += `
-                    <div class="tests-section">
-                        <div class="section-header">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                            Recent Tests
+            // Full History Section (placeholder - data loaded separately)
+            html += `
+                <div class="history-section">
+                    <div class="history-header">
+                        <div>
+                            <div class="history-title">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+                                Complete Test History
+                            </div>
+                            <div class="history-stats" id="historyStats">Loading...</div>
                         </div>
-                        <div class="test-list">
-                            ${data.recentTests.map(t => `
-                                <div class="test-row">
-                                    <span class="test-time">${formatTime(t.timestamp_utc)}</span>
-                                    <div class="test-speeds">
-                                        <span class="test-speed down">\u2193 ${Math.round(t.download_mbps)}</span>
-                                        <span class="test-speed up">\u2191 ${Math.round(t.upload_mbps)}</span>
-                                        <span>${Math.round(t.latency_ms)}ms</span>
-                                    </div>
-                                </div>
-                            `).join('')}
+                        <div class="history-controls">
+                            <input type="text" class="search-input" id="historySearch" placeholder="Search SSID, band..." oninput="debounceSearch()">
+                            <button class="btn" onclick="exportData()">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                                Export CSV
+                            </button>
                         </div>
                     </div>
-                `;
-            }
+                    <div class="history-table-wrapper">
+                        <table class="history-table">
+                            <thead>
+                                <tr>
+                                    <th onclick="sortBy('timestamp_utc')" data-col="timestamp_utc">Date/Time <span class="sort-icon">\u25BC</span></th>
+                                    <th onclick="sortBy('download_mbps')" data-col="download_mbps">Download <span class="sort-icon">\u25BC</span></th>
+                                    <th onclick="sortBy('upload_mbps')" data-col="upload_mbps">Upload <span class="sort-icon">\u25BC</span></th>
+                                    <th onclick="sortBy('latency_ms')" data-col="latency_ms">Latency <span class="sort-icon">\u25BC</span></th>
+                                    <th onclick="sortBy('jitter_ms')" data-col="jitter_ms">Jitter <span class="sort-icon">\u25BC</span></th>
+                                    <th onclick="sortBy('ssid')" data-col="ssid">Network <span class="sort-icon">\u25BC</span></th>
+                                    <th onclick="sortBy('band')" data-col="band">Band <span class="sort-icon">\u25BC</span></th>
+                                    <th onclick="sortBy('channel')" data-col="channel">Channel <span class="sort-icon">\u25BC</span></th>
+                                    <th onclick="sortBy('rssi_dbm')" data-col="rssi_dbm">Signal <span class="sort-icon">\u25BC</span></th>
+                                    <th onclick="sortBy('vpn_status')" data-col="vpn_status">VPN <span class="sort-icon">\u25BC</span></th>
+                                </tr>
+                            </thead>
+                            <tbody id="historyTableBody">
+                                <tr><td colspan="10" style="text-align: center; padding: 40px; color: var(--muted);">Loading history...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pagination">
+                        <div class="pagination-info" id="paginationInfo">Loading...</div>
+                        <div class="pagination-controls" id="paginationControls"></div>
+                    </div>
+                </div>
+            `;
 
             // Actions
             html += `
@@ -883,6 +1047,189 @@
                 setTimeout(() => toast.classList.remove('show'), 2000);
             });
         }
+
+        // History table state
+        let historyState = {
+            page: 1,
+            limit: 50,
+            sort: 'timestamp_utc',
+            order: 'desc',
+            search: '',
+            email: ''
+        };
+
+        let searchTimeout = null;
+
+        function debounceSearch() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                historyState.search = document.getElementById('historySearch').value;
+                historyState.page = 1;
+                loadHistory();
+            }, 300);
+        }
+
+        function sortBy(column) {
+            if (historyState.sort === column) {
+                historyState.order = historyState.order === 'desc' ? 'asc' : 'desc';
+            } else {
+                historyState.sort = column;
+                historyState.order = 'desc';
+            }
+            historyState.page = 1;
+            loadHistory();
+        }
+
+        function goToPage(page) {
+            historyState.page = page;
+            loadHistory();
+        }
+
+        async function loadHistory() {
+            if (!historyState.email) return;
+
+            const params = new URLSearchParams({
+                page: historyState.page,
+                limit: historyState.limit,
+                sort: historyState.sort,
+                order: historyState.order,
+                search: historyState.search
+            });
+
+            try {
+                const response = await fetch(`/api/my/${encodeURIComponent(historyState.email)}/history?${params}`);
+                const data = await response.json();
+
+                if (!data.found) {
+                    document.getElementById('historyTableBody').innerHTML = '<tr><td colspan="10" style="text-align: center; padding: 40px; color: var(--muted);">No data found</td></tr>';
+                    return;
+                }
+
+                renderHistoryTable(data);
+                renderPagination(data);
+                updateSortHeaders();
+
+                // Update stats
+                if (data.stats) {
+                    const stats = data.stats;
+                    const firstDate = stats.first_test ? new Date(stats.first_test).toLocaleDateString() : 'N/A';
+                    document.getElementById('historyStats').textContent =
+                        `${stats.total_tests} total tests \u2022 Avg: ${stats.avg_download} Mbps down, ${stats.avg_upload} Mbps up \u2022 Since ${firstDate}`;
+                }
+            } catch (err) {
+                console.error('Error loading history:', err);
+                document.getElementById('historyTableBody').innerHTML = '<tr><td colspan="10" style="text-align: center; padding: 40px; color: var(--destructive);">Error loading data</td></tr>';
+            }
+        }
+
+        function renderHistoryTable(data) {
+            const tbody = document.getElementById('historyTableBody');
+
+            if (!data.data || data.data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="10" style="text-align: center; padding: 40px; color: var(--muted);">No tests found</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = data.data.map(row => {
+                const date = new Date(row.timestamp_utc);
+                const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                const rssiClass = row.rssi_dbm >= -60 ? 'signal-good' : row.rssi_dbm >= -70 ? 'signal-fair' : 'signal-weak';
+                const vpnClass = row.vpn_status === 'connected' ? 'vpn-on' : 'vpn-off';
+
+                return `
+                    <tr>
+                        <td>${dateStr} ${timeStr}</td>
+                        <td class="speed-down">${row.download_mbps ? Math.round(row.download_mbps) : '-'} Mbps</td>
+                        <td class="speed-up">${row.upload_mbps ? Math.round(row.upload_mbps) : '-'} Mbps</td>
+                        <td>${row.latency_ms ? Math.round(row.latency_ms) : '-'} ms</td>
+                        <td>${row.jitter_ms ? row.jitter_ms.toFixed(1) : '-'} ms</td>
+                        <td>${row.ssid || '-'}</td>
+                        <td>${row.band || '-'}</td>
+                        <td>${row.channel || '-'}</td>
+                        <td class="${rssiClass}">${row.rssi_dbm || '-'} dBm</td>
+                        <td class="${vpnClass}">${row.vpn_status === 'connected' ? '\u2713 On' : '\u2717 Off'}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function renderPagination(data) {
+            const info = document.getElementById('paginationInfo');
+            const controls = document.getElementById('paginationControls');
+
+            const start = (data.page - 1) * data.limit + 1;
+            const end = Math.min(data.page * data.limit, data.total);
+            info.textContent = `Showing ${start}-${end} of ${data.total} tests`;
+
+            let paginationHTML = '';
+
+            // Previous button
+            paginationHTML += `<button class="page-btn" onclick="goToPage(${data.page - 1})" ${data.page <= 1 ? 'disabled' : ''}>\u2190 Prev</button>`;
+
+            // Page numbers
+            const maxPages = 5;
+            let startPage = Math.max(1, data.page - Math.floor(maxPages / 2));
+            let endPage = Math.min(data.totalPages, startPage + maxPages - 1);
+
+            if (endPage - startPage < maxPages - 1) {
+                startPage = Math.max(1, endPage - maxPages + 1);
+            }
+
+            if (startPage > 1) {
+                paginationHTML += `<button class="page-btn" onclick="goToPage(1)">1</button>`;
+                if (startPage > 2) paginationHTML += `<span style="padding: 0 4px;">...</span>`;
+            }
+
+            for (let i = startPage; i <= endPage; i++) {
+                paginationHTML += `<button class="page-btn ${i === data.page ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`;
+            }
+
+            if (endPage < data.totalPages) {
+                if (endPage < data.totalPages - 1) paginationHTML += `<span style="padding: 0 4px;">...</span>`;
+                paginationHTML += `<button class="page-btn" onclick="goToPage(${data.totalPages})">${data.totalPages}</button>`;
+            }
+
+            // Next button
+            paginationHTML += `<button class="page-btn" onclick="goToPage(${data.page + 1})" ${data.page >= data.totalPages ? 'disabled' : ''}>Next \u2192</button>`;
+
+            controls.innerHTML = paginationHTML;
+        }
+
+        function updateSortHeaders() {
+            document.querySelectorAll('.history-table th').forEach(th => {
+                const col = th.dataset.col;
+                const icon = th.querySelector('.sort-icon');
+
+                if (col === historyState.sort) {
+                    th.classList.add('sorted');
+                    if (icon) icon.textContent = historyState.order === 'desc' ? '\u25BC' : '\u25B2';
+                } else {
+                    th.classList.remove('sorted');
+                    if (icon) icon.textContent = '\u25BC';
+                }
+            });
+        }
+
+        function exportData() {
+            if (!historyState.email) return;
+            window.open(`/api/my/${encodeURIComponent(historyState.email)}/export`, '_blank');
+        }
+
+        // Initialize history after main data loads
+        const originalLoadData = loadData;
+        loadData = async function() {
+            await originalLoadData();
+
+            // Extract email and load history
+            const pathParts = window.location.pathname.split('/');
+            historyState.email = decodeURIComponent(pathParts[pathParts.length - 1]);
+
+            if (historyState.email && historyState.email !== 'my') {
+                setTimeout(loadHistory, 100);
+            }
+        };
 
         loadData();
     </script>
