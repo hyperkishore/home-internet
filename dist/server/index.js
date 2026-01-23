@@ -5,15 +5,22 @@ const path = require('path');
 const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
 
-const APP_VERSION = "3.1.43";
+const APP_VERSION = "3.1.45";
 
 // Admin authentication configuration
-// Password is hashed using SHA-256 for security
+// Credentials stored securely in environment variables (never hardcode!)
+// To generate password hash: node -e "console.log(require('crypto').createHash('sha256').update('YOUR_PASSWORD').digest('hex'))"
 const ADMIN_CONFIG = {
-  username: 'riyan.b@hyperverge.co',
-  // SHA-256 hash of the password
-  passwordHash: crypto.createHash('sha256').update('Jesusloves$345').digest('hex')
+  username: process.env.ADMIN_USERNAME,
+  passwordHash: process.env.ADMIN_PASSWORD_HASH  // Pre-computed SHA-256 hash
 };
+
+// Validate admin credentials are configured at startup
+if (!ADMIN_CONFIG.username || !ADMIN_CONFIG.passwordHash) {
+  console.warn('⚠️  WARNING: Admin credentials not configured');
+  console.warn('   Set ADMIN_USERNAME and ADMIN_PASSWORD_HASH environment variables');
+  console.warn('   Generate hash: node -e "console.log(require(\'crypto\').createHash(\'sha256\').update(\'password\').digest(\'hex\'))"');
+}
 
 // Active admin sessions (in-memory for simplicity, resets on server restart)
 const adminSessions = new Map();
