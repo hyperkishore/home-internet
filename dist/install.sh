@@ -92,7 +92,7 @@ rmdir /usr/local/speedmonitor 2>/dev/null || true
 
 # Remove SpeedMonitor.app from ALL possible locations
 echo "  Removing SpeedMonitor.app..."
-rm -rf /Applications/SpeedMonitor.app 2>/dev/null || true
+rm -rf /Applications/SpeedMonitor.app 2>/dev/null || sudo rm -rf /Applications/SpeedMonitor.app 2>/dev/null || true
 rm -rf "$HOME/Applications/SpeedMonitor.app" 2>/dev/null || true
 rm -rf /tmp/SpeedMonitor.app 2>/dev/null || true
 
@@ -271,6 +271,10 @@ curl -fsSL --max-time 120 "$GITHUB_RAW/dist/SpeedMonitor.app.zip" -o /tmp/SpeedM
 if [[ -f /tmp/SpeedMonitor.app.zip ]]; then
     unzip -o /tmp/SpeedMonitor.app.zip -d /tmp/ > /dev/null 2>&1
     if [[ -d /tmp/SpeedMonitor.app ]]; then
+        # Remove existing app if still present (may need sudo if installed by .pkg)
+        if [[ -d /Applications/SpeedMonitor.app ]]; then
+            rm -rf /Applications/SpeedMonitor.app 2>/dev/null || sudo rm -rf /Applications/SpeedMonitor.app 2>/dev/null || true
+        fi
         cp -r /tmp/SpeedMonitor.app /Applications/
 
         # Remove quarantine flag (Gatekeeper)
